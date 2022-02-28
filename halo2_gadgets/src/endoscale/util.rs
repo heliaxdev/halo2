@@ -1,14 +1,14 @@
 //! Primitives used in endoscaling.
 
 use group::{Curve, Group};
-use pasta_curves::arithmetic::{CurveAffine, FieldExt};
-
+use pasta_curves::arithmetic::CurveAffine;
+use ff::WithSmallOrderMulGroup;
 use subtle::CtOption;
 
 /// Maps a pair of bits to a multiple of a scalar using endoscaling.
-pub(crate) fn compute_endoscalar_pair<F: FieldExt>(bits: [bool; 2]) -> F {
+pub(crate) fn compute_endoscalar_pair<F: WithSmallOrderMulGroup<3>>(bits: [bool; 2]) -> F {
     // [2 * bits.0 - 1]
-    let mut scalar = F::from(bits[0]).double() - F::one();
+    let mut scalar = F::from(bits[0] as u64).double() - F::ONE;
 
     if bits[1] {
         scalar *= F::ZETA;
@@ -25,7 +25,7 @@ pub(crate) fn compute_endoscalar_pair<F: FieldExt>(bits: [bool; 2]) -> F {
 ///
 /// [BGH2019]: https://eprint.iacr.org/2019/1021.pdf
 #[allow(dead_code)]
-pub(crate) fn compute_endoscalar<F: FieldExt>(bits: &[bool]) -> F {
+pub(crate) fn compute_endoscalar<F: WithSmallOrderMulGroup<3>>(bits: &[bool]) -> F {
     compute_endoscalar_with_acc(None, bits)
 }
 
@@ -37,10 +37,10 @@ pub(crate) fn compute_endoscalar<F: FieldExt>(bits: &[bool]) -> F {
 ///
 /// # Panics
 /// Panics if there is an odd number of bits.
-pub(crate) fn compute_endoscalar_with_acc<F: FieldExt>(acc: Option<F>, bits: &[bool]) -> F {
+pub(crate) fn compute_endoscalar_with_acc<F: WithSmallOrderMulGroup<3>>(acc: Option<F>, bits: &[bool]) -> F {
     assert_eq!(bits.len() % 2, 0);
 
-    let mut acc = acc.unwrap_or_else(|| (F::ZETA + F::one()).double());
+    let mut acc = acc.unwrap_or_else(|| (F::ZETA + F::ONE).double());
 
     for j in (0..(bits.len() / 2)).rev() {
         let pair = [bits[2 * j], bits[2 * j + 1]];
@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(base * endoscalar, endoscaled_base.to_curve());
     }
 
-    fn shift_padded_endo<F: FieldExt, const K: usize>(padded_endo: F, k_prime: usize) -> F {
+    fn shift_padded_endo<F: WithSmallOrderMulGroup<3>, const K: usize>(padded_endo: F, k_prime: usize) -> F {
         //   (1 - 2^{(K - K')/2}) * 2^{K'/2}
         // = 2^{K'/2} - 2^{K/2}
         let shift = F::from(1 << (k_prime / 2)) - F::from(1 << (K / 2));
@@ -127,18 +127,18 @@ mod tests {
 
     /// Test that shifting the endoscalar of the padded chunk recovers the
     /// same result as directly endoscaling the original chunk.
-    fn endo_partial_chunk<F: FieldExt, const K: usize>(k_prime: usize) {
+    fn endo_partial_chunk<F: WithSmallOrderMulGroup<3>, const K: usize>(k_prime: usize) {
         assert!(k_prime > 0);
         assert!(k_prime < K);
         let bits: Vec<_> = std::iter::repeat(random::<bool>()).take(k_prime).collect();
 
         let padding = std::iter::repeat(false).take(K - k_prime);
         let padded_bits: Vec<_> = bits.iter().copied().chain(padding).collect();
-        let padded_endo = compute_endoscalar_with_acc(Some(F::zero()), &padded_bits);
+        let padded_endo = compute_endoscalar_with_acc(Some(F::ZERO), &padded_bits);
 
         let endo = shift_padded_endo::<_, K>(padded_endo, k_prime);
 
-        assert_eq!(endo, compute_endoscalar_with_acc(Some(F::zero()), &bits));
+        assert_eq!(endo, compute_endoscalar_with_acc(Some(F::ZERO), &bits));
     }
 
     #[test]
@@ -151,7 +151,7 @@ mod tests {
         endo_partial_chunk::<pallas::Base, 10>(8);
     }
 
-    fn endo_chunk<F: FieldExt, const K: usize>(num_bits: usize) {
+    fn endo_chunk<F: WithSmallOrderMulGroup<3>, const K: usize>(num_bits: usize) {
         let bits: Vec<_> = std::iter::repeat(random::<bool>()).take(num_bits).collect();
         let endoscalar_by_pair = compute_endoscalar(&bits);
 
@@ -166,11 +166,11 @@ mod tests {
             .collect();
 
         // Initialise accumulator
-        let mut acc = (F::ZETA + F::one()).double();
+        let mut acc = (F::ZETA + F::ONE).double();
 
         let mut chunks = bits.chunks(K).rev();
         let last_chunk = chunks.next().unwrap();
-        let last_endo = compute_endoscalar_with_acc(Some(F::zero()), last_chunk);
+        let last_endo = compute_endoscalar_with_acc(Some(F::ZERO), last_chunk);
 
         // If the last chunk was padded, adjust it for a shift.
         if pad_len > 0 {
@@ -183,7 +183,7 @@ mod tests {
         };
 
         for chunk in chunks.rev() {
-            let endo = compute_endoscalar_with_acc(Some(F::zero()), chunk);
+            let endo = compute_endoscalar_with_acc(Some(F::ZERO), chunk);
             acc = acc * two_pow_k_div_two + endo;
         }
 

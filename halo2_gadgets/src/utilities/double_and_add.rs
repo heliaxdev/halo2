@@ -1,9 +1,9 @@
 //! Helper for single-row double-and-add.
 
 use std::marker::PhantomData;
-
+use ff::{PrimeField, Field};
 use halo2_proofs::{
-    arithmetic::{CurveAffine, FieldExt},
+    arithmetic::CurveAffine,
     circuit::{AssignedCell, Region, Value},
     plonk::{
         Advice, Assigned, Column, ConstraintSystem, Constraints, Error, Expression, VirtualCells,
@@ -26,15 +26,15 @@ pub(crate) struct DoubleAndAdd<C: CurveAffine> {
 }
 
 /// The x-coordinate of the accumulator in a double-and-add instance.
-pub(crate) struct X<F: FieldExt>(pub AssignedCell<Assigned<F>, F>);
+pub(crate) struct X<F: Field>(pub AssignedCell<Assigned<F>, F>);
 
-impl<F: FieldExt> From<AssignedCell<Assigned<F>, F>> for X<F> {
+impl<F: Field> From<AssignedCell<Assigned<F>, F>> for X<F> {
     fn from(cell_value: AssignedCell<Assigned<F>, F>) -> Self {
         X(cell_value)
     }
 }
 
-impl<F: FieldExt> std::ops::Deref for X<F> {
+impl<F: Field> std::ops::Deref for X<F> {
     type Target = AssignedCell<Assigned<F>, F>;
 
     fn deref(&self) -> &AssignedCell<Assigned<F>, F> {
@@ -47,15 +47,15 @@ impl<F: FieldExt> std::ops::Deref for X<F> {
 /// This is never actually witnessed until the last round, since it
 /// can be derived from other variables. Thus it only exists as a field
 /// element, not a `CellValue`.
-pub(crate) struct Y<F: FieldExt>(pub Value<Assigned<F>>);
+pub(crate) struct Y<F: Field>(pub Value<Assigned<F>>);
 
-impl<F: FieldExt> From<Value<Assigned<F>>> for Y<F> {
+impl<F: Field> From<Value<Assigned<F>>> for Y<F> {
     fn from(value: Value<Assigned<F>>) -> Self {
         Y(value)
     }
 }
 
-impl<F: FieldExt> std::ops::Deref for Y<F> {
+impl<F: Field> std::ops::Deref for Y<F> {
     type Target = Value<Assigned<F>>;
 
     fn deref(&self) -> &Value<Assigned<F>> {
@@ -64,6 +64,10 @@ impl<F: FieldExt> std::ops::Deref for Y<F> {
 }
 
 impl<C: CurveAffine> DoubleAndAdd<C> {
+    pub(crate) fn advices(&self) -> [Column<Advice>; 4] {
+        [self.x_a, self.x_p, self.lambda_1, self.lambda_2]
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn configure(
         meta: &mut ConstraintSystem<C::Base>,
