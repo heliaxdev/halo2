@@ -187,7 +187,13 @@ impl<FixedPoints: super::FixedPoints<pallas::Affine>> Config<FixedPoints> {
         scalar: &ScalarFixed,
         base: &F,
         coords_check_toggle: Selector,
-    ) -> Result<(NonIdentityEccPoint, NonIdentityEccPoint), Error> {
+    ) -> Result<
+        (
+            NonIdentityEccPoint<pallas::Affine>,
+            NonIdentityEccPoint<pallas::Affine>,
+        ),
+        Error,
+    > {
         // Assign fixed columns for given fixed base
         self.assign_fixed_constants::<F, NUM_WINDOWS>(region, offset, base, coords_check_toggle)?;
 
@@ -271,7 +277,7 @@ impl<FixedPoints: super::FixedPoints<pallas::Affine>> Config<FixedPoints> {
         k_usize: Value<usize>,
         window_scalar: Value<pallas::Scalar>,
         base: &F,
-    ) -> Result<NonIdentityEccPoint, Error> {
+    ) -> Result<NonIdentityEccPoint<pallas::Affine>, Error> {
         let base_value = base.generator();
         let base_u = base.u();
         assert_eq!(base_u.len(), NUM_WINDOWS);
@@ -321,7 +327,7 @@ impl<FixedPoints: super::FixedPoints<pallas::Affine>> Config<FixedPoints> {
         offset: usize,
         base: &F,
         scalar: &ScalarFixed,
-    ) -> Result<NonIdentityEccPoint, Error> {
+    ) -> Result<NonIdentityEccPoint<pallas::Affine>, Error> {
         // Recall that the message at each window `w` is represented as
         // `m_w = [(k_w + 2) ⋅ 8^w]B`.
         // When `w = 0`, we have `m_0 = [(k_0 + 2)]B`.
@@ -335,10 +341,10 @@ impl<FixedPoints: super::FixedPoints<pallas::Affine>> Config<FixedPoints> {
         &self,
         region: &mut Region<'_, pallas::Base>,
         offset: usize,
-        mut acc: NonIdentityEccPoint,
+        mut acc: NonIdentityEccPoint<pallas::Affine>,
         base: &F,
         scalar: &ScalarFixed,
-    ) -> Result<NonIdentityEccPoint, Error> {
+    ) -> Result<NonIdentityEccPoint<pallas::Affine>, Error> {
         let scalar_windows_field = scalar.windows_field();
         let scalar_windows_usize = scalar.windows_usize();
         assert_eq!(scalar_windows_field.len(), NUM_WINDOWS);
@@ -379,7 +385,7 @@ impl<FixedPoints: super::FixedPoints<pallas::Affine>> Config<FixedPoints> {
         k: Value<pallas::Scalar>,
         k_usize: Value<usize>,
         base: &F,
-    ) -> Result<NonIdentityEccPoint, Error> {
+    ) -> Result<NonIdentityEccPoint<pallas::Affine>, Error> {
         // `scalar = [(k_w + 2) ⋅ 8^w]
         let scalar = k.map(|k| (k + *TWO_SCALAR) * (*H_SCALAR).pow(&[w as u64, 0, 0, 0]));
 
@@ -393,7 +399,7 @@ impl<FixedPoints: super::FixedPoints<pallas::Affine>> Config<FixedPoints> {
         offset: usize,
         base: &F,
         scalar: &ScalarFixed,
-    ) -> Result<NonIdentityEccPoint, Error> {
+    ) -> Result<NonIdentityEccPoint<pallas::Affine>, Error> {
         let k_usize = scalar.windows_usize()[NUM_WINDOWS - 1];
 
         // offset_acc = \sum_{j = 0}^{NUM_WINDOWS - 2} 2^{FIXED_BASE_WINDOW_SIZE*j + 1}
