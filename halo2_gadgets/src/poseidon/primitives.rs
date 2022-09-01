@@ -16,7 +16,9 @@ pub(crate) mod mds;
 pub(crate) mod test_vectors;
 
 mod p128pow5t3;
+mod p128pow5t5;
 pub use p128pow5t3::P128Pow5T3;
+pub use p128pow5t5::P128Pow5T5;
 
 use grain::SboxType;
 

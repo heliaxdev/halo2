@@ -31,9 +31,9 @@ impl Spec<Fp, 3, 2> for P128Pow5T3 {
 
     fn constants() -> (Vec<[Fp; 3]>, Mds<Fp, 3>, Mds<Fp, 3>) {
         (
-            super::fp::ROUND_CONSTANTS[..].to_vec(),
-            super::fp::MDS,
-            super::fp::MDS_INV,
+            super::fp::ROUND_CONSTANTS_T_3[..].to_vec(),
+            super::fp::MDS_T_3,
+            super::fp::MDS_INV_T_3,
         )
     }
 }
@@ -57,9 +57,9 @@ impl Spec<Fq, 3, 2> for P128Pow5T3 {
 
     fn constants() -> (Vec<[Fq; 3]>, Mds<Fq, 3>, Mds<Fq, 3>) {
         (
-            super::fq::ROUND_CONSTANTS[..].to_vec(),
-            super::fq::MDS,
-            super::fq::MDS_INV,
+            super::fq::ROUND_CONSTANTS_T_3[..].to_vec(),
+            super::fq::MDS_T_3,
+            super::fq::MDS_INV_T_3,
         )
     }
 }
@@ -136,8 +136,8 @@ mod tests {
             }
         }
 
-        verify_constants_helper(fp::ROUND_CONSTANTS, fp::MDS, fp::MDS_INV);
-        verify_constants_helper(fq::ROUND_CONSTANTS, fq::MDS, fq::MDS_INV);
+        verify_constants_helper(fp::ROUND_CONSTANTS_T_3, fp::MDS_T_3, fp::MDS_INV_T_3);
+        verify_constants_helper(fq::ROUND_CONSTANTS_T_3, fq::MDS_T_3, fq::MDS_INV_T_3);
     }
 
     #[test]
@@ -189,7 +189,7 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fp, P128Pow5T3Gen<Fp, 0>, 3, 2>(&mut input, &fp::MDS, &fp::ROUND_CONSTANTS);
+            permute::<Fp, P128Pow5T3Gen<Fp, 0>, 3, 2>(&mut input, &fp::MDS_T_3, &fp::ROUND_CONSTANTS_T_3);
             assert_eq!(input, expected_output);
         }
 
@@ -240,7 +240,7 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fq, P128Pow5T3Gen<Fq, 0>, 3, 2>(&mut input, &fq::MDS, &fq::ROUND_CONSTANTS);
+            permute::<Fq, P128Pow5T3Gen<Fq, 0>, 3, 2>(&mut input, &fq::MDS_T_3, &fq::ROUND_CONSTANTS_T_3);
             assert_eq!(input, expected_output);
         }
     }
