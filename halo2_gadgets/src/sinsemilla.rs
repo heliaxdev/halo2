@@ -111,7 +111,8 @@ impl<C: CurveAffine, SinsemillaChip, const K: usize, const MAX_WORDS: usize>
 where
     SinsemillaChip: SinsemillaInstructions<C, K, MAX_WORDS> + Clone + Debug + Eq,
 {
-    fn from_bitstring(
+    /// TODO doc
+    pub fn from_bitstring(
         chip: SinsemillaChip,
         mut layouter: impl Layouter<C::Base>,
         bitstring: Vec<Value<bool>>,
@@ -185,7 +186,8 @@ impl<C: CurveAffine, SinsemillaChip, const K: usize, const MAX_WORDS: usize>
 where
     SinsemillaChip: SinsemillaInstructions<C, K, MAX_WORDS> + Clone + Debug + Eq,
 {
-    fn from_bitstring(
+    /// TODO doc
+    pub fn from_bitstring(
         chip: SinsemillaChip,
         layouter: impl Layouter<C::Base>,
         bitstring: &[Value<bool>],
