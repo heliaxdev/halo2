@@ -328,6 +328,11 @@ impl TableColumn {
     pub(crate) fn inner(&self) -> Column<Fixed> {
         self.inner
     }
+
+    /// Enable equality on this TableColumn.
+    pub fn enable_equality<F: Field>(&self, meta: &mut ConstraintSystem<F>) {
+        meta.enable_equality(self.inner)
+    }
 }
 
 /// This trait allows a [`Circuit`] to direct some backend to assign a witness
@@ -506,6 +511,7 @@ pub enum Expression<F> {
 impl<F: Field> Expression<F> {
     /// Evaluate the polynomial using the provided closures to perform the
     /// operations.
+    #[allow(clippy::too_many_arguments)]
     pub fn evaluate<T>(
         &self,
         constant: &impl Fn(F) -> T,
