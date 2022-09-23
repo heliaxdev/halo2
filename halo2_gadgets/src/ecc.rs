@@ -488,7 +488,7 @@ impl<C: CurveAffine, EccChip: EccInstructions<C>> FixedPoint<C, EccChip> {
     pub fn mul(
         &self,
         mut layouter: impl Layouter<C::Base>,
-        by: ScalarFixed<C, EccChip>,
+        by: &ScalarFixed<C, EccChip>,
     ) -> Result<(Point<C, EccChip>, ScalarFixed<C, EccChip>), Error> {
         assert_eq!(self.chip, by.chip);
         self.chip

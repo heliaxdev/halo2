@@ -430,7 +430,7 @@ where
         Error,
     > {
         assert_eq!(self.M.sinsemilla_chip, message.chip);
-        let (blind, _) = self.R.mul(layouter.namespace(|| "[r] R"), r)?;
+        let (blind, _) = self.R.mul(layouter.namespace(|| "[r] R"), &r)?;
         let (p, zs) = self.M.hash_to_point(layouter.namespace(|| "M"), message)?;
         let commitment = p.add(layouter.namespace(|| "M + [r] R"), &blind)?;
         Ok((commitment, zs))
