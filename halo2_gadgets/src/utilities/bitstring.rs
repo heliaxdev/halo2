@@ -1,9 +1,8 @@
 //! Bitstring gadget
 
 use std::ops::Range;
-
+use ff::Field;
 use halo2_proofs::{
-    arithmetic::FieldExt,
     circuit::{AssignedCell, Layouter},
     plonk::Error,
 };
@@ -11,7 +10,7 @@ use halo2_proofs::{
 use super::RangeConstrained;
 
 /// Instructions to constrain and subset a bitstring.
-pub trait BitstringInstructions<F: FieldExt> {
+pub trait BitstringInstructions<F: Field> {
     /// Constrains the witnessed field element to be no longer
     /// than `num_bits`.
     fn constrain(
@@ -35,12 +34,12 @@ pub trait BitstringInstructions<F: FieldExt> {
 ///
 /// TODO: Deduplicate with the utilities::RangeConstrained struct.
 #[derive(Debug)]
-pub struct Bitstring<F: FieldExt, BitstringChip: BitstringInstructions<F>> {
+pub struct Bitstring<F: Field, BitstringChip: BitstringInstructions<F>> {
     chip: BitstringChip,
     inner: AssignedCell<F, F>,
 }
 
-impl<F: FieldExt, BitstringChip: BitstringInstructions<F>> Bitstring<F, BitstringChip> {
+impl<F: Field, BitstringChip: BitstringInstructions<F>> Bitstring<F, BitstringChip> {
     /// Constructs a Bitstring gadget from a witnessed field element.
     pub fn new(chip: BitstringChip, inner: AssignedCell<F, F>) -> Self {
         Self { chip, inner }
