@@ -9,6 +9,7 @@ use halo2_proofs::{
 use std::marker::PhantomData;
 use std::ops::Range;
 
+pub mod bitstring;
 pub mod cond_swap;
 pub mod decompose_running_sum;
 pub mod double_and_add;
