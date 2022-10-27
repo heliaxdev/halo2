@@ -1,11 +1,12 @@
 use std::ops::Mul;
 
+use ff::PrimeField;
 use halo2_proofs::{
     circuit::{AssignedCell, Region, Value},
     plonk::{Advice, Assigned, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
 };
-use pasta_curves::pallas;
+use pasta_curves::{pallas, Ep};
 
 use super::EccPoint;
 
@@ -96,6 +97,9 @@ impl Config {
 
     fn create_gate(&self, meta: &mut ConstraintSystem<pallas::Base>) {
         meta.create_gate("map_to_curve_simple_swu", |meta| {
+
+            // this corresponds to the different computations of the `map_to_curve_simple_swu` using `Expression<Fp>`s.
+            // For boolean checks, sqrt computation, we get them from the `configure` (see assign_region) and check them into polynomial constraints.
             let q_swu = meta.query_selector(self.q_swu);
             let a = meta.query_advice(self.a, Rotation::cur());
             let b = meta.query_advice(self.b, Rotation::cur());
@@ -155,6 +159,7 @@ impl Config {
                     ("3", is_sqrt2),
                     ("4", num_gx1_eq_zero),
                     ("5", div3_eq_zero),
+                    // more?
                 ],
             )
         });
@@ -170,21 +175,22 @@ impl Config {
         // Enable `q_add` selector
         self.q_swu.enable(region, offset)?;
 
+        // this basically does what is done out of the circuit, in order to get the boolean conditions, the sqrt computation, the inverses, etc.
+        // necessary for the circuit.
         z.copy_advice(|| "z", region, self.z, offset)?;
         u.copy_advice(|| "u", region, self.u, offset)?;
 
         let zz = z.value();
         let uu = u.value();
 
-        let a = Value::known(pallas::Base::zero());
-        let b = Value::known(pallas::Base::from(5));
+        let a_coeff = Value::known(pallas::Base::from(0));
+        let b_coeff = Value::known(pallas::Base::from(5));
 
         let one = Value::known(pallas::Base::one());
 
-        // theta,
-        // root_of_unity,
-        // z,
-        // u,
+        // Trivial?
+        let root_of_unity = Assigned::Trivial(pallas::Base::root_of_unity());
+        let theta = Assigned::Trivial(Ep::THETA);
 
         // ta_inv
         let u2 = uu.square();
@@ -199,18 +205,42 @@ impl Config {
             .zip(zz)
             .map(|(ta, z)| if ta.is_zero_vartime() { *z } else { -ta });
 
-        let num_x1 = (ta + one) * b;
+        let num_x1 = (ta + one) * b_coeff;
         let num2_x1 = num_x1 * num_x1;
         let div2 = div.square();
         let div3 = div2 * div;
         let div3_inv = div3.invert();
         region.assign_advice(|| "div3_inv", self.div3_inv, offset, || div3_inv);
 
-        // TODO WIP
+        // I am blocked here because I don't know how to get the sqrts.
 
         // sqrt1
-        // ?
-        let sqrt1 = div3_inv.map(|x| x.sqrt());
+        let (is_sqrt1, sqrt1) = div3_inv.zip(div3).map(|(div,num)| {
+            // Fp::sqrt_ratio(&num_gx1, &div3);
+            // this code does what is done in Fp::sqrt_ration.
+            let a = div.invert();
+            let b = a * root_of_unity;
+            let sqrt_a = a.sqrt();
+            let sqrt_b = b.sqrt();
+    
+            let num_is_zero = num.is_zero();
+            let div_is_zero = div.is_zero();
+            let is_square = sqrt_a.is_some();
+            let is_nonsquare = sqrt_b.is_some();
+            assert!(bool::from(
+                num_is_zero | div_is_zero | (is_square ^ is_nonsquare)
+            ));
+    
+            (
+                is_square & !(!num_is_zero & div_is_zero),
+                if is_square {sqrt_a} else {sqrt_b}
+                // CtOption::conditional_select(&sqrt_b, &sqrt_a, is_square).unwrap(),
+            )
+        });
+
+
+
+
         region.assign_advice(|| "sqrt1", self.sqrt1, offset, || div3_inv.sqrt());
         let _a = div3_inv;
         let _b = _a * root_of_unity;

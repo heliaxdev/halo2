@@ -22,6 +22,7 @@ pub(super) mod add_incomplete;
 pub mod constants;
 pub(super) mod mul;
 pub(super) mod mul_fixed;
+pub(super) mod swu;
 pub(super) mod witness_point;
 
 pub use constants::*;
