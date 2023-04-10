@@ -23,7 +23,7 @@ pub use p128pow5t5::P128Pow5T5;
 use grain::SboxType;
 
 /// The type used to hold permutation state.
-pub(crate) type State<F, const T: usize> = [F; T];
+pub type State<F, const T: usize> = [F; T];
 
 /// The type used to hold sponge rate.
 pub(crate) type SpongeRate<F, const RATE: usize> = [Option<F>; RATE];
@@ -78,7 +78,7 @@ pub trait Spec<F: FieldExt, const T: usize, const RATE: usize>: fmt::Debug {
 }
 
 /// Runs the Poseidon permutation on the given state.
-pub(crate) fn permute<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
+pub fn permute<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
     state: &mut State<F, T>,
     mds: &Mds<F, T>,
     round_constants: &[[F; T]],
@@ -159,7 +159,7 @@ pub trait SpongeMode: private::SealedSpongeMode {}
 
 /// The absorbing state of the `Sponge`.
 #[derive(Debug)]
-pub struct Absorbing<F, const RATE: usize>(pub(crate) SpongeRate<F, RATE>);
+pub struct Absorbing<F, const RATE: usize>(pub SpongeRate<F, RATE>);
 
 /// The squeezing state of the `Sponge`.
 #[derive(Debug)]
@@ -169,7 +169,8 @@ impl<F, const RATE: usize> SpongeMode for Absorbing<F, RATE> {}
 impl<F, const RATE: usize> SpongeMode for Squeezing<F, RATE> {}
 
 impl<F: fmt::Debug, const RATE: usize> Absorbing<F, RATE> {
-    pub(crate) fn init_with(val: F) -> Self {
+    /// 
+    pub fn init_with(val: F) -> Self {
         Self(
             iter::once(Some(val))
                 .chain((1..RATE).map(|_| None))
@@ -181,7 +182,8 @@ impl<F: fmt::Debug, const RATE: usize> Absorbing<F, RATE> {
 }
 
 /// A Poseidon sponge.
-pub(crate) struct Sponge<
+#[derive(Debug)]
+pub struct Sponge<
     F: FieldExt,
     S: Spec<F, T, RATE>,
     M: SpongeMode,
@@ -189,9 +191,12 @@ pub(crate) struct Sponge<
     const RATE: usize,
 > {
     mode: M,
-    state: State<F, T>,
-    mds_matrix: Mds<F, T>,
-    round_constants: Vec<[F; T]>,
+    ///
+    pub state: State<F, T>,
+    ///
+    pub  mds_matrix: Mds<F, T>,
+    ///
+    pub round_constants: Vec<[F; T]>,
     _marker: PhantomData<S>,
 }
 
@@ -199,12 +204,26 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
     Sponge<F, S, Absorbing<F, RATE>, T, RATE>
 {
     /// Constructs a new sponge for the given Poseidon specification.
-    pub(crate) fn new(initial_capacity_element: F) -> Self {
+    fn new(initial_capacity_element: F) -> Self {
         let (round_constants, mds_matrix, _) = S::constants();
 
         let mode = Absorbing([None; RATE]);
         let mut state = [F::zero(); T];
         state[RATE] = initial_capacity_element;
+
+        Sponge {
+            mode,
+            state,
+            mds_matrix,
+            round_constants,
+            _marker: PhantomData::default(),
+        }
+    }
+
+    /// Init the state of sponge.
+    pub fn init(state: [F; T]) -> Self {
+        let (round_constants, mds_matrix, _) = S::constants();
+        let mode = Absorbing([None; RATE]);
 
         Sponge {
             mode,
