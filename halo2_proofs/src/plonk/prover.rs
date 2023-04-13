@@ -13,7 +13,7 @@ use super::{
     ChallengeY, Error, ProvingKey,
 };
 use crate::{
-    arithmetic::{eval_polynomial, CurveAffine, FieldExt},
+    arithmetic::{eval_polynomial, CurveAffine},
     circuit::Value,
     plonk::Assigned,
     poly::{
@@ -490,7 +490,6 @@ pub fn create_proof<
                     lookup.commit_product(
                         pk,
                         params,
-                        theta,
                         beta,
                         gamma,
                         &mut coset_evaluator,
@@ -536,7 +535,7 @@ pub fn create_proof<
             // Evaluate the h(X) polynomial's constraint system expressions for the lookup constraints, if any.
             lookups
                 .into_iter()
-                .map(|p| p.construct(theta, beta, gamma, l0, l_blind, l_last))
+                .map(|p| p.construct(beta, gamma, l0, l_blind, l_last))
                 .unzip()
         })
         .unzip();
@@ -597,7 +596,7 @@ pub fn create_proof<
     )?;
 
     let x: ChallengeX<_> = transcript.squeeze_challenge_scalar();
-    let xn = x.pow(&[params.n as u64, 0, 0, 0]);
+    let xn = x.pow(&[params.n, 0, 0, 0]);
 
     // Compute and hash instance evals for each circuit instance
     for instance in instance.iter() {

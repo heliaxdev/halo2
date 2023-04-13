@@ -4,10 +4,7 @@ use std::{fmt, marker::PhantomData};
 
 use ff::Field;
 
-use crate::{
-    arithmetic::FieldExt,
-    plonk::{Advice, Any, Assigned, Column, Error, Fixed, Instance, Selector, TableColumn},
-};
+use crate::plonk::{Advice, Any, Assigned, Column, Error, Fixed, Instance, Selector, TableColumn};
 
 mod value;
 pub use value::Value;
@@ -25,7 +22,7 @@ pub mod layouter;
 /// The chip also loads any fixed configuration needed at synthesis time
 /// using its own implementation of `load`, and stores it in [`Chip::Loaded`].
 /// This can be accessed via [`Chip::loaded`].
-pub trait Chip<F: FieldExt>: Sized {
+pub trait Chip<F: Field>: Sized {
     /// A type that holds the configuration for this chip, and any other state it may need
     /// during circuit synthesis, that can be derived during [`Circuit::configure`].
     ///
@@ -298,6 +295,19 @@ impl<'r, F: Field> Region<'r, F> {
             cell,
             _marker: PhantomData,
         })
+    }
+
+    /// Returns the value of the instance column's cell at absolute location `row`.
+    ///
+    /// This method is only provided for convenience; it does not create any constraints.
+    /// Callers still need to use [`Self::assign_advice_from_instance`] to constrain the
+    /// instance values in their circuit.
+    pub fn instance_value(
+        &mut self,
+        instance: Column<Instance>,
+        row: usize,
+    ) -> Result<Value<F>, Error> {
+        self.region.instance_value(instance, row)
     }
 
     /// Assign a fixed value.

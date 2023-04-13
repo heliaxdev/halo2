@@ -1,9 +1,8 @@
 use std::collections::BTreeMap;
 
 use group::ff::Field;
-use pasta_curves::arithmetic::FieldExt;
 
-use super::{metadata, CellValue, Value};
+use super::{metadata, CellValue, InstanceValue, Value};
 use crate::{
     plonk::{
         AdviceQuery, Any, Column, ColumnType, Expression, FixedQuery, Gate, InstanceQuery,
@@ -59,9 +58,9 @@ impl From<InstanceQuery> for AnyQuery {
 pub(super) fn format_value<F: Field>(v: F) -> String {
     if v.is_zero_vartime() {
         "0".into()
-    } else if v == F::one() {
+    } else if v == F::ONE {
         "1".into()
-    } else if v == -F::one() {
+    } else if v == -F::ONE {
         "-1".into()
     } else {
         // Format value as hex.
@@ -73,7 +72,7 @@ pub(super) fn format_value<F: Field>(v: F) -> String {
     }
 }
 
-pub(super) fn load<'a, F: FieldExt, T: ColumnType, Q: Into<AnyQuery> + Copy>(
+pub(super) fn load<'a, F: Field, T: ColumnType, Q: Into<AnyQuery> + Copy>(
     n: i32,
     row: i32,
     queries: &'a [(Column<T>, Rotation)],
@@ -86,20 +85,21 @@ pub(super) fn load<'a, F: FieldExt, T: ColumnType, Q: Into<AnyQuery> + Copy>(
     }
 }
 
-pub(super) fn load_instance<'a, F: FieldExt, T: ColumnType, Q: Into<AnyQuery> + Copy>(
+pub(super) fn load_instance<'a, F: Field, T: ColumnType, Q: Into<AnyQuery> + Copy>(
     n: i32,
     row: i32,
     queries: &'a [(Column<T>, Rotation)],
-    cells: &'a [Vec<F>],
+    cells: &'a [Vec<InstanceValue<F>>],
 ) -> impl Fn(Q) -> Value<F> + 'a {
     move |query| {
         let (column, at) = &queries[query.into().index];
         let resolved_row = (row + at.0) % n;
-        Value::Real(cells[column.index()][resolved_row as usize])
+        let cell = &cells[column.index()][resolved_row as usize];
+        Value::Real(cell.value())
     }
 }
 
-fn cell_value<'a, F: FieldExt, Q: Into<AnyQuery> + Copy>(
+fn cell_value<'a, F: Field, Q: Into<AnyQuery> + Copy>(
     virtual_cells: &'a [VirtualCell],
     load: impl Fn(Q) -> Value<F> + 'a,
 ) -> impl Fn(Q) -> BTreeMap<metadata::VirtualCell, String> + 'a {
@@ -132,7 +132,7 @@ fn cell_value<'a, F: FieldExt, Q: Into<AnyQuery> + Copy>(
     }
 }
 
-pub(super) fn cell_values<'a, F: FieldExt>(
+pub(super) fn cell_values<'a, F: Field>(
     gate: &Gate<F>,
     poly: &Expression<F>,
     load_fixed: impl Fn(FixedQuery) -> Value<F> + 'a,

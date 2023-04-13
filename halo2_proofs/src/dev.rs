@@ -9,7 +9,6 @@ use ff::Field;
 
 use crate::plonk::Assigned;
 use crate::{
-    arithmetic::{FieldExt, Group},
     circuit,
     plonk::{
         permutation, Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Error, Expression,
@@ -28,6 +27,9 @@ pub use cost::CircuitCost;
 
 mod gates;
 pub use gates::CircuitGates;
+
+mod tfp;
+pub use tfp::TracingFloorPlanner;
 
 #[cfg(feature = "dev-graph")]
 mod graph;
@@ -72,7 +74,7 @@ impl Region {
 
 /// The value of a particular cell within the circuit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CellValue<F: Group + Field> {
+enum CellValue<F: Field> {
     // An unassigned cell.
     Unassigned,
     // A cell that has been assigned a value.
@@ -83,23 +85,23 @@ enum CellValue<F: Group + Field> {
 
 /// A value within an expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd)]
-enum Value<F: Group + Field> {
+enum Value<F: Field> {
     Real(F),
     Poison,
 }
 
-impl<F: Group + Field> From<CellValue<F>> for Value<F> {
+impl<F: Field> From<CellValue<F>> for Value<F> {
     fn from(value: CellValue<F>) -> Self {
         match value {
             // Cells that haven't been explicitly assigned to, default to zero.
-            CellValue::Unassigned => Value::Real(F::zero()),
+            CellValue::Unassigned => Value::Real(F::ZERO),
             CellValue::Assigned(v) => Value::Real(v),
             CellValue::Poison(_) => Value::Poison,
         }
     }
 }
 
-impl<F: Group + Field> Neg for Value<F> {
+impl<F: Field> Neg for Value<F> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -110,7 +112,7 @@ impl<F: Group + Field> Neg for Value<F> {
     }
 }
 
-impl<F: Group + Field> Add for Value<F> {
+impl<F: Field> Add for Value<F> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -121,7 +123,7 @@ impl<F: Group + Field> Add for Value<F> {
     }
 }
 
-impl<F: Group + Field> Mul for Value<F> {
+impl<F: Field> Mul for Value<F> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -132,14 +134,14 @@ impl<F: Group + Field> Mul for Value<F> {
             (Value::Real(x), Value::Poison) | (Value::Poison, Value::Real(x))
                 if x.is_zero_vartime() =>
             {
-                Value::Real(F::zero())
+                Value::Real(F::ZERO)
             }
             _ => Value::Poison,
         }
     }
 }
 
-impl<F: Group + Field> Mul<F> for Value<F> {
+impl<F: Field> Mul<F> for Value<F> {
     type Output = Self;
 
     fn mul(self, rhs: F) -> Self::Output {
@@ -147,7 +149,7 @@ impl<F: Group + Field> Mul<F> for Value<F> {
             Value::Real(lhs) => Value::Real(lhs * rhs),
             // If poison is multiplied by zero, then we treat the poison as unconstrained
             // and we don't propagate it.
-            Value::Poison if rhs.is_zero_vartime() => Value::Real(F::zero()),
+            Value::Poison if rhs.is_zero_vartime() => Value::Real(F::ZERO),
             _ => Value::Poison,
         }
     }
@@ -164,8 +166,8 @@ impl<F: Group + Field> Mul<F> for Value<F> {
 /// # Examples
 ///
 /// ```
+/// use group::ff::PrimeField;
 /// use halo2_proofs::{
-///     arithmetic::FieldExt,
 ///     circuit::{Layouter, SimpleFloorPlanner, Value},
 ///     dev::{FailureLocation, MockProver, VerifyFailure},
 ///     pasta::Fp,
@@ -188,7 +190,7 @@ impl<F: Group + Field> Mul<F> for Value<F> {
 ///     b: Value<u64>,
 /// }
 ///
-/// impl<F: FieldExt> Circuit<F> for MyCircuit {
+/// impl<F: PrimeField> Circuit<F> for MyCircuit {
 ///     type Config = MyConfig;
 ///     type FloorPlanner = SimpleFloorPlanner;
 ///
@@ -267,7 +269,7 @@ impl<F: Group + Field> Mul<F> for Value<F> {
 /// ));
 /// ```
 #[derive(Debug)]
-pub struct MockProver<F: Group + Field> {
+pub struct MockProver<F: Field> {
     k: u32,
     n: u32,
     cs: ConstraintSystem<F>,
@@ -283,7 +285,7 @@ pub struct MockProver<F: Group + Field> {
     // The advice cells in the circuit, arranged as [column][row].
     advice: Vec<Vec<CellValue<F>>>,
     // The instance cells in the circuit, arranged as [column][row].
-    instance: Vec<Vec<F>>,
+    instance: Vec<Vec<InstanceValue<F>>>,
 
     selectors: Vec<Vec<bool>>,
 
@@ -293,7 +295,22 @@ pub struct MockProver<F: Group + Field> {
     usable_rows: Range<usize>,
 }
 
-impl<F: Field + Group> Assignment<F> for MockProver<F> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum InstanceValue<F: Field> {
+    Assigned(F),
+    Padding,
+}
+
+impl<F: Field> InstanceValue<F> {
+    fn value(&self) -> F {
+        match self {
+            InstanceValue::Assigned(v) => *v,
+            InstanceValue::Padding => F::ZERO,
+        }
+    }
+}
+
+impl<F: Field> Assignment<F> for MockProver<F> {
     fn enter_region<NR, N>(&mut self, name: N)
     where
         NR: Into<String>,
@@ -349,7 +366,7 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         self.instance
             .get(column.index())
             .and_then(|column| column.get(row))
-            .map(|v| circuit::Value::known(*v))
+            .map(|v| circuit::Value::known(v.value()))
             .ok_or(Error::BoundsFailure)
     }
 
@@ -462,7 +479,7 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
     }
 }
 
-impl<F: FieldExt> MockProver<F> {
+impl<F: Field + Ord> MockProver<F> {
     /// Runs a synthetic keygen-and-prove operation on the given circuit, collecting data
     /// about the constraints and their assignments.
     pub fn run<ConcreteCircuit: Circuit<F>>(
@@ -486,13 +503,17 @@ impl<F: FieldExt> MockProver<F> {
 
         let instance = instance
             .into_iter()
-            .map(|mut instance| {
+            .map(|instance| {
                 if instance.len() > n - (cs.blinding_factors() + 1) {
                     return Err(Error::InstanceTooLarge);
                 }
 
-                instance.resize(n, F::zero());
-                Ok(instance)
+                let mut instance_values = vec![InstanceValue::Padding; n];
+                for (idx, value) in instance.into_iter().enumerate() {
+                    instance_values[idx] = InstanceValue::Assigned(value);
+                }
+
+                Ok(instance_values)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -576,17 +597,37 @@ impl<F: FieldExt> MockProver<F> {
                                 // Determine where this cell should have been assigned.
                                 let cell_row = ((gate_row + n + cell.rotation.0) % n) as usize;
 
-                                // Check that it was assigned!
-                                if r.cells.contains(&(cell.column, cell_row)) {
-                                    None
-                                } else {
-                                    Some(VerifyFailure::CellNotAssigned {
-                                        gate: (gate_index, gate.name()).into(),
-                                        region: (r_i, r.name.clone()).into(),
-                                        gate_offset: *selector_row,
-                                        column: cell.column,
-                                        offset: cell_row as isize - r.rows.unwrap().0 as isize,
-                                    })
+                                match cell.column.column_type() {
+                                    Any::Instance => {
+                                        // Handle instance cells, which are not in the region.
+                                        let instance_value =
+                                            &self.instance[cell.column.index()][cell_row];
+                                        match instance_value {
+                                            InstanceValue::Assigned(_) => None,
+                                            _ => Some(VerifyFailure::InstanceCellNotAssigned {
+                                                gate: (gate_index, gate.name()).into(),
+                                                region: (r_i, r.name.clone()).into(),
+                                                gate_offset: *selector_row,
+                                                column: cell.column.try_into().unwrap(),
+                                                row: cell_row,
+                                            }),
+                                        }
+                                    }
+                                    _ => {
+                                        // Check that it was assigned!
+                                        if r.cells.contains(&(cell.column, cell_row)) {
+                                            None
+                                        } else {
+                                            Some(VerifyFailure::CellNotAssigned {
+                                                gate: (gate_index, gate.name()).into(),
+                                                region: (r_i, r.name.clone()).into(),
+                                                gate_offset: *selector_row,
+                                                column: cell.column,
+                                                offset: cell_row as isize
+                                                    - r.rows.unwrap().0 as isize,
+                                            })
+                                        }
+                                    }
                                 }
                             })
                         })
@@ -693,7 +734,8 @@ impl<F: FieldExt> MockProver<F> {
                                 let rotation = query.1 .0;
                                 Value::Real(
                                     self.instance[column_index]
-                                        [(row as i32 + n + rotation) as usize % n as usize],
+                                        [(row as i32 + n + rotation) as usize % n as usize]
+                                        .value(),
                                 )
                             },
                             &|a| -a,
@@ -796,7 +838,10 @@ impl<F: FieldExt> MockProver<F> {
                     .map(|c: &Column<Any>| match c.column_type() {
                         Any::Advice => self.advice[c.index()][row],
                         Any::Fixed => self.fixed[c.index()][row],
-                        Any::Instance => CellValue::Assigned(self.instance[c.index()][row]),
+                        Any::Instance => {
+                            let cell: &InstanceValue<F> = &self.instance[c.index()][row];
+                            CellValue::Assigned(cell.value())
+                        }
                     })
                     .unwrap()
             };
@@ -875,6 +920,7 @@ impl<F: FieldExt> MockProver<F> {
 
 #[cfg(test)]
 mod tests {
+    use group::ff::Field;
     use pasta_curves::Fp;
 
     use super::{FailureLocation, MockProver, VerifyFailure};
@@ -936,7 +982,7 @@ mod tests {
                         config.q.enable(&mut region, 1)?;
 
                         // Assign a = 0.
-                        region.assign_advice(|| "a", config.a, 0, || Value::known(Fp::zero()))?;
+                        region.assign_advice(|| "a", config.a, 0, || Value::known(Fp::ZERO))?;
 
                         // BUG: Forget to assign b = 0! This could go unnoticed during
                         // development, because cell values default to zero, which in this

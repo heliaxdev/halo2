@@ -7,6 +7,15 @@ and this project adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.3.0] - 2023-03-21
+### Added
+- `halo2_gadgets::poseidon::primitives::{Mds, generate_constants}`
+
+### Changed
+- Migrated to `ff 0.13`, `group 0.13`, `pasta_curves 0.5` and `halo2_proofs 0.3`.
+- APIs with `F: pasta_curves::arithmetic::FieldExt` bounds have been changed to
+  use `ff` traits directly.
+
 ## [0.2.0] - 2022-06-23
 ### Added
 - `halo2_gadgets::utilities::RangeConstrained<F, Value<F>>::bitrange_of`
