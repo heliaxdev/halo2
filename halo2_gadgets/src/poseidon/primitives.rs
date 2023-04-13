@@ -86,7 +86,7 @@ pub fn generate_constants<
 }
 
 /// Runs the Poseidon permutation on the given state.
-pub fn permute<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
+pub fn permute<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
     state: &mut State<F, T>,
     mds: &Mds<F, T>,
     round_constants: &[[F; T]],
@@ -192,7 +192,7 @@ impl<F: fmt::Debug, const RATE: usize> Absorbing<F, RATE> {
 /// A Poseidon sponge.
 #[derive(Debug)]
 pub struct Sponge<
-    F: FieldExt,
+    F: Field,
     S: Spec<F, T, RATE>,
     M: SpongeMode,
     const T: usize,
