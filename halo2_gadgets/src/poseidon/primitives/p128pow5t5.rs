@@ -213,11 +213,7 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fp, P128Pow5T5Gen<Fp, 0>, 5, 4>(
-                &mut input,
-                &fp::MDS_T_5,
-                &fp::ROUND_CONSTANTS_T_5,
-            );
+            permute::<Fp, P128Pow5T5Gen<Fp, 0>, 5, 4>(&mut input, &fp::MDS_T_5, &fp::ROUND_CONSTANTS_T_5);
             assert_eq!(input, expected_output);
         }
 
@@ -256,7 +252,7 @@ mod tests {
                     0x0000_0000_0000_0000,
                     0x0000_0000_0000_0000,
                     0x0000_0000_0000_0000,
-                ]),
+                ]),        
             ];
 
             let expected_output = [
@@ -292,11 +288,7 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fq, P128Pow5T5Gen<Fq, 0>, 5, 4>(
-                &mut input,
-                &fq::MDS_T_5,
-                &fq::ROUND_CONSTANTS_T_5,
-            );
+            permute::<Fq, P128Pow5T5Gen<Fq, 0>, 5, 4>(&mut input, &fq::MDS_T_5, &fq::ROUND_CONSTANTS_T_5);
             assert_eq!(input, expected_output);
         }
     }

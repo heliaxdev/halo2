@@ -418,8 +418,8 @@ mod tests {
 
     #[test]
     fn test_poseidon_4_inputs() {
-        use crate::poseidon::primitives::P128Pow5T5;
         use pasta_curves::vesta::Base as Fq;
+        use crate::poseidon::primitives::P128Pow5T5;
 
         let message = [Fq::from(1), Fq::from(12), Fq::from(121), Fq::from(1212)];
 
@@ -430,13 +430,7 @@ mod tests {
 
         // The result should be equivalent to just directly applying the permutation and
         // taking the first state element as the output.
-        let mut state = [
-            message[0],
-            message[1],
-            message[2],
-            message[3],
-            Fq::from_u128(2 << 65),
-        ];
+        let mut state = [message[0], message[1], message[2], message[3], Fq::from_u128(2 << 65)];
         permute::<_, P128Pow5T5, 5, 4>(&mut state, &mds, &round_constants);
 
         assert_eq!(state[0], result);
