@@ -70,33 +70,30 @@ where
 
     // All provided selectors of degree 0 are assumed to be either concrete
     // selectors or do not appear in a gate. Let's address these first.
-    selectors = selectors
-        .into_iter()
-        .filter(|selector| {
-            if selector.max_degree == 0 {
-                // This is a complex selector, or a selector that does not appear in any
-                // gate constraint.
-                let expression = allocate_fixed_column();
+    selectors.retain(|selector| {
+        if selector.max_degree == 0 {
+            // This is a complex selector, or a selector that does not appear in any
+            // gate constraint.
+            let expression = allocate_fixed_column();
 
-                let combination_assignment = selector
-                    .activations
-                    .iter()
-                    .map(|b| if *b { F::one() } else { F::zero() })
-                    .collect::<Vec<_>>();
-                let combination_index = combination_assignments.len();
-                combination_assignments.push(combination_assignment);
-                selector_assignments.push(SelectorAssignment {
-                    selector: selector.selector,
-                    combination_index,
-                    expression,
-                });
+            let combination_assignment = selector
+                .activations
+                .iter()
+                .map(|b| if *b { F::ONE } else { F::ZERO })
+                .collect::<Vec<_>>();
+            let combination_index = combination_assignments.len();
+            combination_assignments.push(combination_assignment);
+            selector_assignments.push(SelectorAssignment {
+                selector: selector.selector,
+                combination_index,
+                expression,
+            });
 
-                false
-            } else {
-                true
-            }
-        })
-        .collect();
+            false
+        } else {
+            true
+        }
+    });
 
     // All of the remaining `selectors` are simple. Let's try to combine them.
     // First, we compute the exclusion matrix that has (j, k) = true if selector
@@ -180,12 +177,12 @@ where
         }
 
         // Now, compute the selector and combination assignments.
-        let mut combination_assignment = vec![F::zero(); n];
+        let mut combination_assignment = vec![F::ZERO; n];
         let combination_len = combination.len();
         let combination_index = combination_assignments.len();
         let query = allocate_fixed_column();
 
-        let mut assigned_root = F::one();
+        let mut assigned_root = F::ONE;
         selector_assignments.extend(combination.into_iter().map(|selector| {
             // Compute the expression for substitution. This produces an expression of the
             // form
@@ -195,12 +192,12 @@ where
             // `assigned_root`. In particular, rows set to 0 correspond to all selectors
             // being disabled.
             let mut expression = query.clone();
-            let mut root = F::one();
+            let mut root = F::ONE;
             for _ in 0..combination_len {
                 if root != assigned_root {
                     expression = expression * (Expression::Constant(root) - query.clone());
                 }
-                root += F::one();
+                root += F::ONE;
             }
 
             // Update the combination assignment
@@ -215,7 +212,7 @@ where
                 }
             }
 
-            assigned_root += F::one();
+            assigned_root += F::ONE;
 
             SelectorAssignment {
                 selector: selector.selector,

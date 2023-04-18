@@ -5,10 +5,25 @@ use super::multicore;
 pub use ff::Field;
 use group::{
     ff::{BatchInvert, PrimeField},
-    Group as _,
+    Group as _, GroupOpsOwned, ScalarMulOwned,
 };
 
 pub use pasta_curves::arithmetic::*;
+
+/// This represents an element of a group with basic operations that can be
+/// performed. This allows an FFT implementation (for example) to operate
+/// generically over either a field or elliptic curve group.
+pub trait FftGroup<Scalar: Field>:
+    Copy + Send + Sync + 'static + GroupOpsOwned + ScalarMulOwned<Scalar>
+{
+}
+
+impl<T, Scalar> FftGroup<Scalar> for T
+where
+    Scalar: Field,
+    T: Copy + Send + Sync + 'static + GroupOpsOwned + ScalarMulOwned<Scalar>,
+{
+}
 
 fn multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C::Curve) {
     let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
@@ -168,7 +183,7 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 /// by $n$.
 ///
 /// This will use multithreading if beneficial.
-pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
+pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
     fn bitreverse(mut n: usize, l: usize) -> usize {
         let mut r = 0;
         for _ in 0..l {
@@ -180,7 +195,7 @@ pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
 
     let threads = multicore::current_num_threads();
     let log_threads = log2_floor(threads);
-    let n = a.len() as usize;
+    let n = a.len();
     assert_eq!(n, 1 << log_n);
 
     for k in 0..n {
@@ -191,17 +206,17 @@ pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
     }
 
     // precompute twiddle factors
-    let twiddles: Vec<_> = (0..(n / 2) as usize)
-        .scan(G::Scalar::one(), |w, _| {
+    let twiddles: Vec<_> = (0..(n / 2))
+        .scan(Scalar::ONE, |w, _| {
             let tw = *w;
-            w.group_scale(&omega);
+            *w *= &omega;
             Some(tw)
         })
         .collect();
 
     if log_n <= log_threads {
         let mut chunk = 2_usize;
-        let mut twiddle_chunk = (n / 2) as usize;
+        let mut twiddle_chunk = n / 2;
         for _ in 0..log_n {
             a.chunks_mut(chunk).for_each(|coeffs| {
                 let (left, right) = coeffs.split_at_mut(chunk / 2);
@@ -211,18 +226,18 @@ pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
                 let (b, right) = right.split_at_mut(1);
                 let t = b[0];
                 b[0] = a[0];
-                a[0].group_add(&t);
-                b[0].group_sub(&t);
+                a[0] += &t;
+                b[0] -= &t;
 
                 left.iter_mut()
                     .zip(right.iter_mut())
                     .enumerate()
                     .for_each(|(i, (a, b))| {
                         let mut t = *b;
-                        t.group_scale(&twiddles[(i + 1) * twiddle_chunk]);
+                        t *= &twiddles[(i + 1) * twiddle_chunk];
                         *b = *a;
-                        a.group_add(&t);
-                        b.group_sub(&t);
+                        *a += &t;
+                        *b -= &t;
                     });
             });
             chunk *= 2;
@@ -234,17 +249,17 @@ pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
 }
 
 /// This perform recursive butterfly arithmetic
-pub fn recursive_butterfly_arithmetic<G: Group>(
+pub fn recursive_butterfly_arithmetic<Scalar: Field, G: FftGroup<Scalar>>(
     a: &mut [G],
     n: usize,
     twiddle_chunk: usize,
-    twiddles: &[G::Scalar],
+    twiddles: &[Scalar],
 ) {
     if n == 2 {
         let t = a[1];
         a[1] = a[0];
-        a[0].group_add(&t);
-        a[1].group_sub(&t);
+        a[0] += &t;
+        a[1] -= &t;
     } else {
         let (left, right) = a.split_at_mut(n / 2);
         multicore::join(
@@ -257,18 +272,18 @@ pub fn recursive_butterfly_arithmetic<G: Group>(
         let (b, right) = right.split_at_mut(1);
         let t = b[0];
         b[0] = a[0];
-        a[0].group_add(&t);
-        b[0].group_sub(&t);
+        a[0] += &t;
+        b[0] -= &t;
 
         left.iter_mut()
             .zip(right.iter_mut())
             .enumerate()
             .for_each(|(i, (a, b))| {
                 let mut t = *b;
-                t.group_scale(&twiddles[(i + 1) * twiddle_chunk]);
+                t *= &twiddles[(i + 1) * twiddle_chunk];
                 *b = *a;
-                a.group_add(&t);
-                b.group_sub(&t);
+                *a += &t;
+                *b -= &t;
             });
     }
 }
@@ -278,7 +293,7 @@ pub fn eval_polynomial<F: Field>(poly: &[F], point: F) -> F {
     // TODO: parallelize?
     poly.iter()
         .rev()
-        .fold(F::zero(), |acc, coeff| acc * point + coeff)
+        .fold(F::ZERO, |acc, coeff| acc * point + coeff)
 }
 
 /// This computes the inner product of two vectors `a` and `b`.
@@ -288,7 +303,7 @@ pub fn compute_inner_product<F: Field>(a: &[F], b: &[F]) -> F {
     // TODO: parallelize?
     assert_eq!(a.len(), b.len());
 
-    let mut acc = F::zero();
+    let mut acc = F::ZERO;
     for (a, b) in a.iter().zip(b.iter()) {
         acc += (*a) * (*b);
     }
@@ -305,9 +320,9 @@ where
     b = -b;
     let a = a.into_iter();
 
-    let mut q = vec![F::zero(); a.len() - 1];
+    let mut q = vec![F::ZERO; a.len() - 1];
 
-    let mut tmp = F::zero();
+    let mut tmp = F::ZERO;
     for (q, r) in q.iter_mut().rev().zip(a.rev()) {
         let mut lead_coeff = *r;
         lead_coeff.sub_assign(&tmp);
@@ -324,9 +339,9 @@ where
 pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) {
     let n = v.len();
     let num_threads = multicore::current_num_threads();
-    let mut chunk = (n as usize) / num_threads;
+    let mut chunk = n / num_threads;
     if chunk < num_threads {
-        chunk = n as usize;
+        chunk = n;
     }
 
     multicore::scope(|scope| {
@@ -355,11 +370,11 @@ fn log2_floor(num: usize) -> u32 {
 /// Returns coefficients of an n - 1 degree polynomial given a set of n points
 /// and their evaluations. This function will panic if two values in `points`
 /// are the same.
-pub fn lagrange_interpolate<F: FieldExt>(points: &[F], evals: &[F]) -> Vec<F> {
+pub fn lagrange_interpolate<F: Field>(points: &[F], evals: &[F]) -> Vec<F> {
     assert_eq!(points.len(), evals.len());
     if points.len() == 1 {
         // Constant polynomial
-        return vec![evals[0]];
+        vec![evals[0]]
     } else {
         let mut denoms = Vec::with_capacity(points.len());
         for (j, x_j) in points.iter().enumerate() {
@@ -377,11 +392,11 @@ pub fn lagrange_interpolate<F: FieldExt>(points: &[F], evals: &[F]) -> Vec<F> {
         // Compute (x_j - x_k)^(-1) for each j != i
         denoms.iter_mut().flat_map(|v| v.iter_mut()).batch_invert();
 
-        let mut final_poly = vec![F::zero(); points.len()];
+        let mut final_poly = vec![F::ZERO; points.len()];
         for (j, (denoms, eval)) in denoms.into_iter().zip(evals.iter()).enumerate() {
             let mut tmp: Vec<F> = Vec::with_capacity(points.len());
             let mut product = Vec::with_capacity(points.len() - 1);
-            tmp.push(F::one());
+            tmp.push(F::ONE);
             for (x_k, denom) in points
                 .iter()
                 .enumerate()
@@ -389,11 +404,11 @@ pub fn lagrange_interpolate<F: FieldExt>(points: &[F], evals: &[F]) -> Vec<F> {
                 .map(|a| a.1)
                 .zip(denoms.into_iter())
             {
-                product.resize(tmp.len() + 1, F::zero());
+                product.resize(tmp.len() + 1, F::ZERO);
                 for ((a, b), product) in tmp
                     .iter()
-                    .chain(std::iter::once(&F::zero()))
-                    .zip(std::iter::once(&F::zero()).chain(tmp.iter()))
+                    .chain(std::iter::once(&F::ZERO))
+                    .zip(std::iter::once(&F::ZERO).chain(tmp.iter()))
                     .zip(product.iter_mut())
                 {
                     *product = *a * (-denom * x_k) + *b * denom;

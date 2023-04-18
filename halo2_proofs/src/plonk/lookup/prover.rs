@@ -4,7 +4,7 @@ use super::super::{
 };
 use super::Argument;
 use crate::{
-    arithmetic::{eval_polynomial, parallelize, CurveAffine, FieldExt},
+    arithmetic::{eval_polynomial, parallelize, CurveAffine},
     poly::{
         self,
         commitment::{Blind, Params},
@@ -13,6 +13,7 @@ use crate::{
     },
     transcript::{EncodedChallenge, TranscriptWrite},
 };
+use ff::WithSmallOrderMulGroup;
 use group::{
     ff::{BatchInvert, Field},
     Curve,
@@ -26,14 +27,14 @@ use std::{
 
 #[derive(Debug)]
 pub(in crate::plonk) struct Permuted<C: CurveAffine, Ev> {
-    unpermuted_input_expressions: Vec<Polynomial<C::Scalar, LagrangeCoeff>>,
-    unpermuted_input_cosets: Vec<poly::Ast<Ev, C::Scalar, ExtendedLagrangeCoeff>>,
+    compressed_input_expression: Polynomial<C::Scalar, LagrangeCoeff>,
     permuted_input_expression: Polynomial<C::Scalar, LagrangeCoeff>,
+    compressed_input_coset: poly::Ast<Ev, C::Scalar, ExtendedLagrangeCoeff>,
     permuted_input_poly: Polynomial<C::Scalar, Coeff>,
     permuted_input_coset: poly::AstLeaf<Ev, ExtendedLagrangeCoeff>,
     permuted_input_blind: Blind<C::Scalar>,
-    unpermuted_table_expressions: Vec<Polynomial<C::Scalar, LagrangeCoeff>>,
-    unpermuted_table_cosets: Vec<poly::Ast<Ev, C::Scalar, ExtendedLagrangeCoeff>>,
+    compressed_table_expression: Polynomial<C::Scalar, LagrangeCoeff>,
+    compressed_table_coset: poly::Ast<Ev, C::Scalar, ExtendedLagrangeCoeff>,
     permuted_table_expression: Polynomial<C::Scalar, LagrangeCoeff>,
     permuted_table_poly: Polynomial<C::Scalar, Coeff>,
     permuted_table_coset: poly::AstLeaf<Ev, ExtendedLagrangeCoeff>,
@@ -61,7 +62,7 @@ pub(in crate::plonk) struct Evaluated<C: CurveAffine> {
     constructed: Constructed<C>,
 }
 
-impl<F: FieldExt> Argument<F> {
+impl<F: WithSmallOrderMulGroup<3>> Argument<F> {
     /// Given a Lookup with input expressions [A_0, A_1, ..., A_{m-1}] and table expressions
     /// [S_0, S_1, ..., S_{m-1}], this method
     /// - constructs A_compressed = \theta^{m-1} A_0 + theta^{m-2} A_1 + ... + \theta A_{m-2} + A_{m-1}
@@ -164,26 +165,28 @@ impl<F: FieldExt> Argument<F> {
 
             // Compressed version of expressions
             let compressed_expression = unpermuted_expressions.iter().fold(
-                poly::Ast::ConstantTerm(C::Scalar::zero()),
+                poly::Ast::ConstantTerm(C::Scalar::ZERO),
                 |acc, expression| &(acc * *theta) + expression,
             );
 
+            // Compressed version of cosets
+            let compressed_coset = unpermuted_cosets.iter().fold(
+                poly::Ast::<_, _, ExtendedLagrangeCoeff>::ConstantTerm(C::Scalar::ZERO),
+                |acc, eval| acc * poly::Ast::ConstantTerm(*theta) + eval.clone(),
+            );
+
             (
-                unpermuted_expressions
-                    .iter()
-                    .map(|ast| value_evaluator.evaluate(ast, domain))
-                    .collect(),
-                unpermuted_cosets,
+                compressed_coset,
                 value_evaluator.evaluate(&compressed_expression, domain),
             )
         };
 
         // Get values of input expressions involved in the lookup and compress them
-        let (unpermuted_input_expressions, unpermuted_input_cosets, compressed_input_expression) =
+        let (compressed_input_coset, compressed_input_expression) =
             compress_expressions(&self.input_expressions);
 
         // Get values of table expressions involved in the lookup and compress them
-        let (unpermuted_table_expressions, unpermuted_table_cosets, compressed_table_expression) =
+        let (compressed_table_coset, compressed_table_expression) =
             compress_expressions(&self.table_expressions);
 
         // Permute compressed (InputExpression, TableExpression) pair
@@ -224,14 +227,14 @@ impl<F: FieldExt> Argument<F> {
             .register_poly(pk.vk.domain.coeff_to_extended(permuted_table_poly.clone()));
 
         Ok(Permuted {
-            unpermuted_input_expressions,
-            unpermuted_input_cosets,
+            compressed_input_expression,
+            compressed_input_coset,
             permuted_input_expression,
             permuted_input_poly,
             permuted_input_coset,
             permuted_input_blind,
-            unpermuted_table_expressions,
-            unpermuted_table_cosets,
+            compressed_table_expression,
+            compressed_table_coset,
             permuted_table_expression,
             permuted_table_poly,
             permuted_table_coset,
@@ -255,7 +258,6 @@ impl<C: CurveAffine, Ev: Copy + Send + Sync> Permuted<C, Ev> {
         self,
         pk: &ProvingKey<C>,
         params: &Params<C>,
-        theta: ChallengeTheta<C>,
         beta: ChallengeBeta<C>,
         gamma: ChallengeGamma<C>,
         evaluator: &mut poly::Evaluator<Ev, C::Scalar, ExtendedLagrangeCoeff>,
@@ -274,7 +276,7 @@ impl<C: CurveAffine, Ev: Copy + Send + Sync> Permuted<C, Ev> {
         // s_j(X) is the jth table expression in this lookup,
         // s'(X) is the compression of the permuted table expressions,
         // and i is the ith row of the expression.
-        let mut lookup_product = vec![C::Scalar::zero(); params.n as usize];
+        let mut lookup_product = vec![C::Scalar::ZERO; params.n as usize];
         // Denominator uses the permuted input expression and permuted table expression
         parallelize(&mut lookup_product, |lookup_product, start| {
             for ((lookup_product, permuted_input_value), permuted_table_value) in lookup_product
@@ -294,23 +296,11 @@ impl<C: CurveAffine, Ev: Copy + Send + Sync> Permuted<C, Ev> {
         // (\theta^{m-1} a_0(\omega^i) + \theta^{m-2} a_1(\omega^i) + ... + \theta a_{m-2}(\omega^i) + a_{m-1}(\omega^i) + \beta)
         // * (\theta^{m-1} s_0(\omega^i) + \theta^{m-2} s_1(\omega^i) + ... + \theta s_{m-2}(\omega^i) + s_{m-1}(\omega^i) + \gamma)
         parallelize(&mut lookup_product, |product, start| {
-            for (i, product) in product.iter_mut().enumerate() {
-                let i = i + start;
-
-                // Compress unpermuted input expressions
-                let mut input_term = C::Scalar::zero();
-                for unpermuted_input_expression in self.unpermuted_input_expressions.iter() {
-                    input_term *= &*theta;
-                    input_term += &unpermuted_input_expression[i];
-                }
-
-                // Compress unpermuted table expressions
-                let mut table_term = C::Scalar::zero();
-                for unpermuted_table_expression in self.unpermuted_table_expressions.iter() {
-                    table_term *= &*theta;
-                    table_term += &unpermuted_table_expression[i];
-                }
-
+            for ((product, &input_term), &table_term) in product
+                .iter_mut()
+                .zip(self.compressed_input_expression[start..].iter())
+                .zip(self.compressed_table_expression[start..].iter())
+            {
                 *product *= &(input_term + &*beta);
                 *product *= &(table_term + &*gamma);
             }
@@ -331,9 +321,9 @@ impl<C: CurveAffine, Ev: Copy + Send + Sync> Permuted<C, Ev> {
 
         // Compute the evaluations of the lookup product polynomial
         // over our domain, starting with z[0] = 1
-        let z = iter::once(C::Scalar::one())
+        let z = iter::once(C::Scalar::ONE)
             .chain(lookup_product)
-            .scan(C::Scalar::one(), |state, cur| {
+            .scan(C::Scalar::ONE, |state, cur| {
                 *state *= &cur;
                 Some(*state)
             })
@@ -354,7 +344,7 @@ impl<C: CurveAffine, Ev: Copy + Send + Sync> Permuted<C, Ev> {
             let u = (params.n as usize) - (blinding_factors + 1);
 
             // l_0(X) * (1 - z(X)) = 0
-            assert_eq!(z[0], C::Scalar::one());
+            assert_eq!(z[0], C::Scalar::ONE);
 
             // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
             // - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1} s_0(X) + ... + s_{m-1}(X) + \gamma)
@@ -368,15 +358,9 @@ impl<C: CurveAffine, Ev: Copy + Send + Sync> Permuted<C, Ev> {
                 left *= &(*gamma + permuted_table_value);
 
                 let mut right = z[i];
-                let mut input_term = self
-                    .unpermuted_input_expressions
-                    .iter()
-                    .fold(C::Scalar::zero(), |acc, input| acc * &*theta + &input[i]);
+                let mut input_term = self.compressed_input_expression[i];
 
-                let mut table_term = self
-                    .unpermuted_table_expressions
-                    .iter()
-                    .fold(C::Scalar::zero(), |acc, table| acc * &*theta + &table[i]);
+                let mut table_term = self.compressed_table_expression[i];
 
                 input_term += &(*beta);
                 table_term += &(*gamma);
@@ -388,7 +372,7 @@ impl<C: CurveAffine, Ev: Copy + Send + Sync> Permuted<C, Ev> {
             // l_last(X) * (z(X)^2 - z(X)) = 0
             // Assertion will fail only when soundness is broken, in which
             // case this z[u] value will be zero. (bad!)
-            assert_eq!(z[u], C::Scalar::one());
+            assert_eq!(z[u], C::Scalar::ONE);
         }
 
         let product_blind = Blind(C::Scalar::random(rng));
@@ -416,7 +400,6 @@ impl<'a, C: CurveAffine, Ev: Copy + Send + Sync + 'a> Committed<C, Ev> {
     /// the extended evaluation domain.
     pub(in crate::plonk) fn construct(
         self,
-        theta: ChallengeTheta<C>,
         beta: ChallengeBeta<C>,
         gamma: ChallengeGamma<C>,
         l0: poly::AstLeaf<Ev, ExtendedLagrangeCoeff>,
@@ -453,15 +436,9 @@ impl<'a, C: CurveAffine, Ev: Copy + Send + Sync + 'a> Committed<C, Ev> {
                     * (poly::Ast::from(permuted.permuted_table_coset) + gamma.clone());
 
                 //  z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1} s_0(X) + ... + s_{m-1}(X) + \gamma)
-                let compress_cosets = |cosets: &[poly::Ast<_, _, _>]| {
-                    cosets.iter().fold(
-                        poly::Ast::<_, _, ExtendedLagrangeCoeff>::ConstantTerm(C::Scalar::zero()),
-                        |acc, eval| acc * poly::Ast::ConstantTerm(*theta) + eval.clone(),
-                    )
-                };
                 let right: poly::Ast<_, _, _> = poly::Ast::from(self.product_coset)
-                    * (compress_cosets(&permuted.unpermuted_input_cosets) + beta)
-                    * (compress_cosets(&permuted.unpermuted_table_cosets) + gamma);
+                    * (permuted.compressed_input_coset + beta)
+                    * (permuted.compressed_table_coset + gamma);
 
                 Some((left - right) * active_rows.clone())
             })
@@ -608,7 +585,7 @@ fn permute_expression_pair<C: CurveAffine, R: RngCore>(
             *acc.entry(*coeff).or_insert(0) += 1;
             acc
         });
-    let mut permuted_table_coeffs = vec![C::Scalar::zero(); usable_rows];
+    let mut permuted_table_coeffs = vec![C::Scalar::ZERO; usable_rows];
 
     let mut repeated_input_rows = permuted_input_expression
         .iter()
@@ -637,7 +614,7 @@ fn permute_expression_pair<C: CurveAffine, R: RngCore>(
     // Populate permuted table at unfilled rows with leftover table elements
     for (coeff, count) in leftover_table_map.iter() {
         for _ in 0..*count {
-            permuted_table_coeffs[repeated_input_rows.pop().unwrap() as usize] = *coeff;
+            permuted_table_coeffs[repeated_input_rows.pop().unwrap()] = *coeff;
         }
     }
     assert!(repeated_input_rows.is_empty());

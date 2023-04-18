@@ -228,12 +228,11 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// Selectors are disabled on all rows by default, and must be explicitly enabled on each
 /// row when required:
 /// ```
+/// use group::ff::Field;
 /// use halo2_proofs::{
-///     arithmetic::FieldExt,
 ///     circuit::{Chip, Layouter, Value},
 ///     plonk::{Advice, Column, Error, Selector},
 /// };
-/// # use ff::Field;
 /// # use halo2_proofs::plonk::Fixed;
 ///
 /// struct Config {
@@ -242,12 +241,12 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 ///     s: Selector,
 /// }
 ///
-/// fn circuit_logic<F: FieldExt, C: Chip<F>>(chip: C, mut layouter: impl Layouter<F>) -> Result<(), Error> {
+/// fn circuit_logic<F: Field, C: Chip<F>>(chip: C, mut layouter: impl Layouter<F>) -> Result<(), Error> {
 ///     let config = chip.config();
 ///     # let config: Config = todo!();
 ///     layouter.assign_region(|| "bar", |mut region| {
-///         region.assign_advice(|| "a", config.a, 0, || Value::known(F::one()))?;
-///         region.assign_advice(|| "a", config.b, 1, || Value::known(F::one()))?;
+///         region.assign_advice(|| "a", config.a, 0, || Value::known(F::ONE))?;
+///         region.assign_advice(|| "a", config.b, 1, || Value::known(F::ONE))?;
 ///         config.s.enable(&mut region, 1)
 ///     })?;
 ///     Ok(())
@@ -816,6 +815,7 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
 /// A set of polynomial constraints with a common selector.
 ///
 /// ```
+/// use group::ff::Field;
 /// use halo2_proofs::{pasta::Fp, plonk::{Constraints, Expression}, poly::Rotation};
 /// # use halo2_proofs::plonk::ConstraintSystem;
 ///
@@ -832,7 +832,7 @@ impl<F: Field> From<Expression<F>> for Vec<Constraint<F>> {
 ///     let c = meta.query_advice(c, Rotation::cur());
 ///     let s_ternary = meta.query_selector(s);
 ///
-///     let one_minus_a = Expression::Constant(Fp::one()) - a.clone();
+///     let one_minus_a = Expression::Constant(Fp::ONE) - a.clone();
 ///
 ///     Constraints::with_selector(
 ///         s_ternary,
@@ -1070,7 +1070,7 @@ impl<F: Field> ConstraintSystem<F> {
                     panic!("expression containing simple selector supplied to lookup argument");
                 }
 
-                let table = cells.query_fixed(table.inner(), Rotation::cur());
+                let table = cells.query_fixed(table.inner());
 
                 (input, table)
             })
@@ -1083,17 +1083,17 @@ impl<F: Field> ConstraintSystem<F> {
         index
     }
 
-    fn query_fixed_index(&mut self, column: Column<Fixed>, at: Rotation) -> usize {
+    fn query_fixed_index(&mut self, column: Column<Fixed>) -> usize {
         // Return existing query, if it exists
         for (index, fixed_query) in self.fixed_queries.iter().enumerate() {
-            if fixed_query == &(column, at) {
+            if fixed_query == &(column, Rotation::cur()) {
                 return index;
             }
         }
 
         // Make a new query
         let index = self.fixed_queries.len();
-        self.fixed_queries.push((column, at));
+        self.fixed_queries.push((column, Rotation::cur()));
 
         index
     }
@@ -1132,7 +1132,7 @@ impl<F: Field> ConstraintSystem<F> {
     fn query_any_index(&mut self, column: Column<Any>, at: Rotation) -> usize {
         match column.column_type() {
             Any::Advice => self.query_advice_index(Column::<Advice>::try_from(column).unwrap(), at),
-            Any::Fixed => self.query_fixed_index(Column::<Fixed>::try_from(column).unwrap(), at),
+            Any::Fixed => self.query_fixed_index(Column::<Fixed>::try_from(column).unwrap()),
             Any::Instance => {
                 self.query_instance_index(Column::<Instance>::try_from(column).unwrap(), at)
             }
@@ -1169,17 +1169,18 @@ impl<F: Field> ConstraintSystem<F> {
         panic!("get_instance_query_index called for non-existent query");
     }
 
-    pub(crate) fn get_any_query_index(&self, column: Column<Any>, at: Rotation) -> usize {
+    pub(crate) fn get_any_query_index(&self, column: Column<Any>) -> usize {
         match column.column_type() {
-            Any::Advice => {
-                self.get_advice_query_index(Column::<Advice>::try_from(column).unwrap(), at)
-            }
-            Any::Fixed => {
-                self.get_fixed_query_index(Column::<Fixed>::try_from(column).unwrap(), at)
-            }
-            Any::Instance => {
-                self.get_instance_query_index(Column::<Instance>::try_from(column).unwrap(), at)
-            }
+            Any::Advice => self.get_advice_query_index(
+                Column::<Advice>::try_from(column).unwrap(),
+                Rotation::cur(),
+            ),
+            Any::Fixed => self
+                .get_fixed_query_index(Column::<Fixed>::try_from(column).unwrap(), Rotation::cur()),
+            Any::Instance => self.get_instance_query_index(
+                Column::<Instance>::try_from(column).unwrap(),
+                Rotation::cur(),
+            ),
         }
     }
 
@@ -1272,7 +1273,7 @@ impl<F: Field> ConstraintSystem<F> {
                 let column = self.fixed_column();
                 new_columns.push(column);
                 Expression::Fixed(FixedQuery {
-                    index: self.query_fixed_index(column, Rotation::cur()),
+                    index: self.query_fixed_index(column),
                     column_index: column.index,
                     rotation: Rotation::cur(),
                 })
@@ -1496,12 +1497,12 @@ impl<'a, F: Field> VirtualCells<'a, F> {
     }
 
     /// Query a fixed column at a relative position
-    pub fn query_fixed(&mut self, column: Column<Fixed>, at: Rotation) -> Expression<F> {
-        self.queried_cells.push((column, at).into());
+    pub fn query_fixed(&mut self, column: Column<Fixed>) -> Expression<F> {
+        self.queried_cells.push((column, Rotation::cur()).into());
         Expression::Fixed(FixedQuery {
-            index: self.meta.query_fixed_index(column, at),
+            index: self.meta.query_fixed_index(column),
             column_index: column.index,
-            rotation: at,
+            rotation: Rotation::cur(),
         })
     }
 
@@ -1526,11 +1527,20 @@ impl<'a, F: Field> VirtualCells<'a, F> {
     }
 
     /// Query an Any column at a relative position
+    ///
+    /// # Panics
+    ///
+    /// Panics if query_fixed is called with a non-cur Rotation.
     pub fn query_any<C: Into<Column<Any>>>(&mut self, column: C, at: Rotation) -> Expression<F> {
         let column = column.into();
         match column.column_type() {
             Any::Advice => self.query_advice(Column::<Advice>::try_from(column).unwrap(), at),
-            Any::Fixed => self.query_fixed(Column::<Fixed>::try_from(column).unwrap(), at),
+            Any::Fixed => {
+                if at != Rotation::cur() {
+                    panic!("Fixed columns can only be queried at the current rotation");
+                }
+                self.query_fixed(Column::<Fixed>::try_from(column).unwrap())
+            }
             Any::Instance => self.query_instance(Column::<Instance>::try_from(column).unwrap(), at),
         }
     }

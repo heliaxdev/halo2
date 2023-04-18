@@ -7,7 +7,7 @@ use crate::utilities::decompose_running_sum::RunningSumConfig;
 use std::marker::PhantomData;
 
 use group::{
-    ff::{PrimeField, PrimeFieldBits},
+    ff::{Field, PrimeField, PrimeFieldBits},
     Curve,
 };
 use halo2_proofs::{
@@ -19,10 +19,7 @@ use halo2_proofs::{
     poly::Rotation,
 };
 use lazy_static::lazy_static;
-use pasta_curves::{
-    arithmetic::{CurveAffine, FieldExt},
-    pallas,
-};
+use pasta_curves::{arithmetic::CurveAffine, pallas};
 
 pub mod base_field_elem;
 pub mod full_width;
@@ -140,7 +137,7 @@ impl<FixedPoints: super::FixedPoints<pallas::Affine>> Config<FixedPoints> {
     ) -> Vec<(&'static str, Expression<pallas::Base>)> {
         let y_p = meta.query_advice(self.add_config.y_p, Rotation::cur());
         let x_p = meta.query_advice(self.add_config.x_p, Rotation::cur());
-        let z = meta.query_fixed(self.fixed_z, Rotation::cur());
+        let z = meta.query_fixed(self.fixed_z);
         let u = meta.query_advice(self.u, Rotation::cur());
 
         let window_pow: Vec<Expression<pallas::Base>> = (0..H)
@@ -153,9 +150,7 @@ impl<FixedPoints: super::FixedPoints<pallas::Affine>> Config<FixedPoints> {
 
         let interpolated_x = window_pow.iter().zip(self.lagrange_coeffs.iter()).fold(
             Expression::Constant(pallas::Base::zero()),
-            |acc, (window_pow, coeff)| {
-                acc + (window_pow.clone() * meta.query_fixed(*coeff, Rotation::cur()))
-            },
+            |acc, (window_pow, coeff)| acc + (window_pow.clone() * meta.query_fixed(*coeff)),
         );
 
         // Check interpolation of x-coordinate
@@ -493,7 +488,7 @@ impl ScalarFixed {
                         .by_vals()
                         .take(FIXED_BASE_WINDOW_SIZE)
                         .rev()
-                        .fold(0, |acc, b| 2 * acc + if b { 1 } else { 0 })
+                        .fold(0, |acc, b| 2 * acc + usize::from(b))
                 })
             })
             .collect::<Vec<_>>()

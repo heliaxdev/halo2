@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
 use group::ff::Field;
-use pasta_curves::arithmetic::FieldExt;
 
 use super::{
     metadata,
@@ -11,13 +10,13 @@ use super::{
 };
 use crate::{
     dev::Value,
-    plonk::{Any, Column, ConstraintSystem, Expression, Gate},
+    plonk::{Any, Column, ConstraintSystem, Expression, Gate, Instance},
 };
 
 mod emitter;
 
 /// The location within the circuit at which a particular [`VerifyFailure`] occurred.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum FailureLocation {
     /// A location inside a region.
     InRegion {
@@ -87,26 +86,28 @@ impl FailureLocation {
             .iter()
             .enumerate()
             .find(|(_, r)| {
-                let (start, end) = r.rows.unwrap();
-                // We match the region if any input columns overlap, rather than all of
-                // them, because matching complex selector columns is hard. As long as
-                // regions are rectangles, and failures occur due to assignments entirely
-                // within single regions, "any" will be equivalent to "all". If these
-                // assumptions change, we'll start getting bug reports from users :)
-                (start..=end).contains(&failure_row) && !failure_columns.is_disjoint(&r.columns)
+                if let Some((start, end)) = r.rows {
+                    // We match the region if any input columns overlap, rather than all of
+                    // them, because matching complex selector columns is hard. As long as
+                    // regions are rectangles, and failures occur due to assignments entirely
+                    // within single regions, "any" will be equivalent to "all". If these
+                    // assumptions change, we'll start getting bug reports from users :)
+                    (start..=end).contains(&failure_row) && !failure_columns.is_disjoint(&r.columns)
+                } else {
+                    // Zero-area region
+                    false
+                }
             })
             .map(|(r_i, r)| FailureLocation::InRegion {
                 region: (r_i, r.name.clone()).into(),
-                offset: failure_row as usize - r.rows.unwrap().0 as usize,
+                offset: failure_row - r.rows.unwrap().0,
             })
-            .unwrap_or_else(|| FailureLocation::OutsideRegion {
-                row: failure_row as usize,
-            })
+            .unwrap_or_else(|| FailureLocation::OutsideRegion { row: failure_row })
     }
 }
 
 /// The reasons why a particular circuit is not satisfied.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum VerifyFailure {
     /// A cell used in an active gate was not assigned to.
     CellNotAssigned {
@@ -123,6 +124,20 @@ pub enum VerifyFailure {
         /// assigned. This may be negative (for example, if a selector enables a gate at
         /// offset 0, but the gate uses `Rotation::prev()`).
         offset: isize,
+    },
+    /// An instance cell used in an active gate was not assigned to.
+    InstanceCellNotAssigned {
+        /// The index of the active gate.
+        gate: metadata::Gate,
+        /// The region in which this gate was activated.
+        region: metadata::Region,
+        /// The offset (relative to the start of the region) at which the active gate
+        /// queries this cell.
+        gate_offset: usize,
+        /// The column in which this cell should be assigned.
+        column: Column<Instance>,
+        /// The absolute row at which this cell should be assigned.
+        row: usize,
     },
     /// A constraint was not satisfied for a particular row.
     ConstraintNotSatisfied {
@@ -184,6 +199,19 @@ impl fmt::Display for VerifyFailure {
                     f,
                     "{} uses {} at offset {}, which requires cell in column {:?} at offset {} to be assigned.",
                     region, gate, gate_offset, column, offset
+                )
+            }
+            Self::InstanceCellNotAssigned {
+                gate,
+                region,
+                gate_offset,
+                column,
+                row,
+            } => {
+                write!(
+                    f,
+                    "{} uses {} at offset {}, which requires cell in instance column {:?} at row {} to be assigned.",
+                    region, gate, gate_offset, column, row
                 )
             }
             Self::ConstraintNotSatisfied {
@@ -365,7 +393,7 @@ fn render_constraint_not_satisfied<F: Field>(
 ///     |   x0 = 0x5
 ///     |   x1 = 1
 /// ```
-fn render_lookup<F: FieldExt>(
+fn render_lookup<F: Field>(
     prover: &MockProver<F>,
     lookup_index: usize,
     location: &FailureLocation,
@@ -399,7 +427,7 @@ fn render_lookup<F: FieldExt>(
         )
     });
 
-    fn cell_value<'a, F: FieldExt, Q: Into<AnyQuery> + Copy>(
+    fn cell_value<'a, F: Field, Q: Into<AnyQuery> + Copy>(
         column_type: Any,
         load: impl Fn(Q) -> Value<F> + 'a,
     ) -> impl Fn(Q) -> BTreeMap<metadata::VirtualCell, String> + 'a {
@@ -504,7 +532,7 @@ fn render_lookup<F: FieldExt>(
 
 impl VerifyFailure {
     /// Emits this failure in pretty-printed format to stderr.
-    pub(super) fn emit<F: FieldExt>(&self, prover: &MockProver<F>) {
+    pub(super) fn emit<F: Field>(&self, prover: &MockProver<F>) {
         match self {
             Self::CellNotAssigned {
                 gate,

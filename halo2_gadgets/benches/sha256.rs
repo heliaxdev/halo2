@@ -10,13 +10,12 @@ use halo2_proofs::{
 };
 use rand::rngs::OsRng;
 
+use criterion::{criterion_group, criterion_main, Criterion};
 use std::{
-    fs::File,
+    fs::{create_dir_all, File},
     io::{prelude::*, BufReader},
     path::Path,
 };
-
-use criterion::{criterion_group, criterion_main, Criterion};
 
 use halo2_gadgets::sha256::{BlockWord, Sha256, Table16Chip, Table16Config, BLOCK_SIZE};
 
@@ -77,20 +76,23 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
         }
     }
 
+    // Create parent directory for assets
+    create_dir_all("./benches/sha256_assets").expect("Failed to create sha256_assets directory");
+
     // Initialize the polynomial commitment parameters
     let params_path = Path::new("./benches/sha256_assets/sha256_params");
-    if File::open(&params_path).is_err() {
+    if File::open(params_path).is_err() {
         let params: Params<EqAffine> = Params::new(k);
         let mut buf = Vec::new();
 
         params.write(&mut buf).expect("Failed to write params");
-        let mut file = File::create(&params_path).expect("Failed to create sha256_params");
+        let mut file = File::create(params_path).expect("Failed to create sha256_params");
 
         file.write_all(&buf[..])
             .expect("Failed to write params to file");
     }
 
-    let params_fs = File::open(&params_path).expect("couldn't load sha256_params");
+    let params_fs = File::open(params_path).expect("couldn't load sha256_params");
     let params: Params<EqAffine> =
         Params::read::<_>(&mut BufReader::new(params_fs)).expect("Failed to read params");
 
@@ -102,31 +104,32 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
 
     let circuit: MyCircuit = MyCircuit {};
 
-    // let prover_name = name.to_string() + "-prover";
     let verifier_name = name.to_string() + "-verifier";
 
-    // /// Benchmark proof creation
-    // c.bench_function(&prover_name, |b| {
-    //     b.iter(|| {
-    //         let mut transcript = Blake2bWrite::init(Fq::one());
-    //         create_proof(&params, &pk, &circuit, &[], &mut transcript)
-    //             .expect("proof generation should not fail");
-    //         let proof: Vec<u8> = transcript.finalize();
-    //     });
-    // });
+    // Benchmark proof creation
+    /*
+    let prover_name = name.to_string() + "-prover";
+    c.bench_function(&prover_name, |b| {
+        b.iter(|| {
+            let mut transcript = Blake2bWrite::init(vec![]);
+            create_proof(&params, &pk, &[circuit], &[&[]], OsRng, &mut transcript)
+                .expect("proof generation should not fail");
+        });
+    });
+     */
 
     // Create a proof
     let proof_path = Path::new("./benches/sha256_assets/sha256_proof");
-    if File::open(&proof_path).is_err() {
+    if File::open(proof_path).is_err() {
         let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
-        create_proof(&params, &pk, &[circuit], &[], OsRng, &mut transcript)
+        create_proof(&params, &pk, &[circuit], &[&[]], OsRng, &mut transcript)
             .expect("proof generation should not fail");
         let proof: Vec<u8> = transcript.finalize();
-        let mut file = File::create(&proof_path).expect("Failed to create sha256_proof");
+        let mut file = File::create(proof_path).expect("Failed to create sha256_proof");
         file.write_all(&proof[..]).expect("Failed to write proof");
     }
 
-    let mut proof_fs = File::open(&proof_path).expect("couldn't load sha256_proof");
+    let mut proof_fs = File::open(proof_path).expect("couldn't load sha256_proof");
     let mut proof = Vec::<u8>::new();
     proof_fs
         .read_to_end(&mut proof)
@@ -136,7 +139,7 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
         b.iter(|| {
             let strategy = SingleVerifier::new(&params);
             let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(&proof[..]);
-            assert!(verify_proof(&params, pk.get_vk(), strategy, &[], &mut transcript).is_ok());
+            assert!(verify_proof(&params, pk.get_vk(), strategy, &[&[]], &mut transcript).is_ok());
         });
     });
 }
