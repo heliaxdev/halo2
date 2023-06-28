@@ -237,8 +237,8 @@ impl<C: CurveAffine> ProvingKey<C> {
     pub fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         self.vk.write(writer)?;
         self.l0.write(writer)?;
+        self.l_blind.write(writer)?;
         self.l_last.write(writer)?;
-        // self.l_active_row.write(writer)?;
         write_polynomial_slice(&self.fixed_values, writer)?;
         write_polynomial_slice(&self.fixed_polys, writer)?;
         write_polynomial_slice(&self.fixed_cosets, writer)?;
