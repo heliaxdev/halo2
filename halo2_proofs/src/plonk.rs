@@ -6,10 +6,9 @@
 //! [plonk]: https://eprint.iacr.org/2019/953
 
 use blake2b_simd::Params as Blake2bParams;
-use group::ff::Field;
-use ff::PrimeField;
+use group::ff::{Field, FromUniformBytes, PrimeField};
 
-use crate::arithmetic::{CurveAffine, FieldExt};
+use crate::arithmetic::CurveAffine;
 use crate::poly::{
     commitment::Params, Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, PinnedEvaluationDomain,
     Polynomial,
@@ -54,7 +53,10 @@ pub struct VerifyingKey<C: CurveAffine> {
     selectors: Vec<Vec<bool>>,
 }
 
-impl<C: CurveAffine> VerifyingKey<C> {
+impl<C: CurveAffine> VerifyingKey<C> 
+where
+    C::Scalar: FromUniformBytes<64>,
+    {
         /// Writes a verifying key to a buffer.
         pub fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
             writer.write_all(&(self.fixed_commitments.len() as u32).to_be_bytes())?;
@@ -155,7 +157,7 @@ impl<C: CurveAffine> VerifyingKey<C> {
             cs,
             cs_degree,
             // Temporary, this is not pinned.
-            transcript_repr: C::Scalar::zero(),
+            transcript_repr: C::Scalar::ZERO,
             selectors
         };
 
@@ -170,11 +172,13 @@ impl<C: CurveAffine> VerifyingKey<C> {
         hasher.update(s.as_bytes());
 
         // Hash in final Blake2bState
-        vk.transcript_repr = C::Scalar::from_bytes_wide(hasher.finalize().as_array());
+        vk.transcript_repr = C::Scalar::from_uniform_bytes(hasher.finalize().as_array());
 
         vk
     }
+}
 
+impl<C: CurveAffine> VerifyingKey<C> {
     /// Hashes a verification key into a transcript.
     pub fn hash_into<E: EncodedChallenge<C>, T: Transcript<C, E>>(
         &self,
@@ -225,7 +229,9 @@ pub struct ProvingKey<C: CurveAffine> {
     permutation: permutation::ProvingKey<C>,
 }
 
-impl<C: CurveAffine> ProvingKey<C> {
+impl<C: CurveAffine> ProvingKey<C>
+where
+    C::Scalar: FromUniformBytes<64>, {
     /// Get the underlying [`VerifyingKey`].
     pub fn get_vk(&self) -> &VerifyingKey<C> {
         &self.vk

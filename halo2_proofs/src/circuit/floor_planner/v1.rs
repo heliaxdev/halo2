@@ -81,8 +81,8 @@ impl FloorPlanner for V1 {
 
         // - Determine how many rows our planned circuit will require.
         let first_unassigned_row = column_allocations
-            .iter()
-            .map(|(_, a)| a.unbounded_interval_start())
+            .values()
+            .map(|a| a.unbounded_interval_start())
             .max()
             .unwrap_or(0);
 
@@ -446,6 +446,14 @@ impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> RegionLayouter<F> for V1Region<'r
         )?;
 
         Ok((cell, value))
+    }
+
+    fn instance_value(
+        &mut self,
+        instance: Column<Instance>,
+        row: usize,
+    ) -> Result<Value<F>, Error> {
+        self.plan.cs.query_instance(instance, row)
     }
 
     fn assign_fixed<'v>(

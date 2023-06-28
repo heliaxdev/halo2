@@ -111,8 +111,8 @@ impl<C: CurveAffine, SinsemillaChip, const K: usize, const MAX_WORDS: usize>
 where
     SinsemillaChip: SinsemillaInstructions<C, K, MAX_WORDS> + Clone + Debug + Eq,
 {
-    #![allow(dead_code)]
-    fn from_bitstring(
+    /// TODO doc
+    pub fn from_bitstring(
         chip: SinsemillaChip,
         mut layouter: impl Layouter<C::Base>,
         bitstring: Vec<Value<bool>>,
@@ -166,7 +166,6 @@ pub struct MessagePiece<C: CurveAffine, SinsemillaChip, const K: usize, const MA
 where
     SinsemillaChip: SinsemillaInstructions<C, K, MAX_WORDS> + Clone + Debug + Eq,
 {
-    chip: SinsemillaChip,
     inner: SinsemillaChip::MessagePiece,
 }
 
@@ -186,8 +185,8 @@ impl<C: CurveAffine, SinsemillaChip, const K: usize, const MAX_WORDS: usize>
 where
     SinsemillaChip: SinsemillaInstructions<C, K, MAX_WORDS> + Clone + Debug + Eq,
 {
-    #![allow(dead_code)]
-    fn from_bitstring(
+    /// TODO doc
+    pub fn from_bitstring(
         chip: SinsemillaChip,
         layouter: impl Layouter<C::Base>,
         bitstring: &[Value<bool>],
@@ -199,15 +198,15 @@ where
         // Each message piece must have at most `floor(C::Base::CAPACITY / K)` words.
         // This ensures that the all-ones bitstring is canonical in the field.
         let piece_max_num_words = C::Base::CAPACITY as usize / K;
-        assert!(num_words <= piece_max_num_words as usize);
+        assert!(num_words <= piece_max_num_words);
 
         // Closure to parse a bitstring (little-endian) into a base field element.
         let to_base_field = |bits: &[Value<bool>]| -> Value<C::Base> {
             let bits: Value<Vec<bool>> = bits.iter().cloned().collect();
             bits.map(|bits| {
-                bits.into_iter().rev().fold(C::Base::zero(), |acc, bit| {
+                bits.into_iter().rev().fold(C::Base::ZERO, |acc, bit| {
                     if bit {
-                        acc.double() + C::Base::one()
+                        acc.double() + C::Base::ONE
                     } else {
                         acc.double()
                     }
@@ -227,7 +226,7 @@ where
         num_words: usize,
     ) -> Result<Self, Error> {
         let inner = chip.witness_message_piece(layouter, field_elem, num_words)?;
-        Ok(Self { chip, inner })
+        Ok(Self { inner })
     }
 
     /// Constructs a `MessagePiece` by concatenating a sequence of [`RangeConstrained`]
@@ -245,7 +244,7 @@ where
         subpieces: impl IntoIterator<Item = RangeConstrained<C::Base, Value<C::Base>>>,
     ) -> Result<Self, Error> {
         let (field_elem, total_bits) = subpieces.into_iter().fold(
-            (Value::known(C::Base::zero()), 0),
+            (Value::known(C::Base::ZERO), 0),
             |(acc, bits), subpiece| {
                 assert!(bits < 64);
                 let subpiece_shifted = subpiece
@@ -430,7 +429,7 @@ where
         Error,
     > {
         assert_eq!(self.M.sinsemilla_chip, message.chip);
-        let (blind, _) = self.R.mul(layouter.namespace(|| "[r] R"), r)?;
+        let (blind, _) = self.R.mul(layouter.namespace(|| "[r] R"), &r)?;
         let (p, zs) = self.M.hash_to_point(layouter.namespace(|| "M"), message)?;
         let commitment = p.add(layouter.namespace(|| "M + [r] R"), &blind)?;
         Ok((commitment, zs))

@@ -6,8 +6,8 @@ use std::{
     sync::Arc,
 };
 
+use ff::WithSmallOrderMulGroup;
 use group::ff::Field;
-use pasta_curves::arithmetic::FieldExt;
 
 use super::{
     Basis, Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation,
@@ -133,14 +133,14 @@ impl<E, F: Field, B: Basis> Evaluator<E, F, B> {
     ) -> Polynomial<F, B>
     where
         E: Copy + Send + Sync,
-        F: FieldExt,
+        F: WithSmallOrderMulGroup<3>,
         B: BasisOps,
     {
         // We're working in a single basis, so all polynomials are the same length.
         let poly_len = self.polys.first().unwrap().len();
         let (chunk_size, _num_chunks) = get_chunk_params(poly_len);
 
-        struct AstContext<'a, F: FieldExt, B: Basis> {
+        struct AstContext<'a, F: Field, B: Basis> {
             domain: &'a EvaluationDomain<F>,
             poly_len: usize,
             chunk_size: usize,
@@ -148,7 +148,7 @@ impl<E, F: Field, B: Basis> Evaluator<E, F, B> {
             polys: &'a [Polynomial<F, B>],
         }
 
-        fn recurse<E, F: FieldExt, B: BasisOps>(
+        fn recurse<E, F: WithSmallOrderMulGroup<3>, B: BasisOps>(
             ast: &Ast<E, F, B>,
             ctx: &AstContext<'_, F, B>,
         ) -> Vec<F> {
@@ -184,7 +184,7 @@ impl<E, F: Field, B: Basis> Evaluator<E, F, B> {
                     lhs
                 }
                 Ast::DistributePowers(terms, base) => terms.iter().fold(
-                    B::constant_term(ctx.poly_len, ctx.chunk_size, ctx.chunk_index, F::zero()),
+                    B::constant_term(ctx.poly_len, ctx.chunk_size, ctx.chunk_index, F::ZERO),
                     |mut acc, term| {
                         let term = recurse(term, ctx);
                         for (acc, term) in acc.iter_mut().zip(term) {
@@ -299,7 +299,7 @@ impl<E, F: Field, B: Basis> From<AstLeaf<E, B>> for Ast<E, F, B> {
 
 impl<E, F: Field, B: Basis> Ast<E, F, B> {
     pub(crate) fn one() -> Self {
-        Self::ConstantTerm(F::one())
+        Self::ConstantTerm(F::ONE)
     }
 }
 
@@ -307,7 +307,7 @@ impl<E, F: Field, B: Basis> Neg for Ast<E, F, B> {
     type Output = Ast<E, F, B>;
 
     fn neg(self) -> Self::Output {
-        Ast::Scale(Arc::new(self), -F::one())
+        Ast::Scale(Arc::new(self), -F::ONE)
     }
 }
 
@@ -441,21 +441,23 @@ impl<E: Clone, F: Field> MulAssign for Ast<E, F, ExtendedLagrangeCoeff> {
 
 /// Operations which can be performed over a given basis.
 pub(crate) trait BasisOps: Basis {
-    fn empty_poly<F: FieldExt>(domain: &EvaluationDomain<F>) -> Polynomial<F, Self>;
-    fn constant_term<F: FieldExt>(
+    fn empty_poly<F: WithSmallOrderMulGroup<3>>(
+        domain: &EvaluationDomain<F>,
+    ) -> Polynomial<F, Self>;
+    fn constant_term<F: Field>(
         poly_len: usize,
         chunk_size: usize,
         chunk_index: usize,
         scalar: F,
     ) -> Vec<F>;
-    fn linear_term<F: FieldExt>(
+    fn linear_term<F: WithSmallOrderMulGroup<3>>(
         domain: &EvaluationDomain<F>,
         poly_len: usize,
         chunk_size: usize,
         chunk_index: usize,
         scalar: F,
     ) -> Vec<F>;
-    fn get_chunk_of_rotated<F: FieldExt>(
+    fn get_chunk_of_rotated<F: WithSmallOrderMulGroup<3>>(
         domain: &EvaluationDomain<F>,
         chunk_size: usize,
         chunk_index: usize,
@@ -465,31 +467,33 @@ pub(crate) trait BasisOps: Basis {
 }
 
 impl BasisOps for Coeff {
-    fn empty_poly<F: FieldExt>(domain: &EvaluationDomain<F>) -> Polynomial<F, Self> {
+    fn empty_poly<F: WithSmallOrderMulGroup<3>>(
+        domain: &EvaluationDomain<F>,
+    ) -> Polynomial<F, Self> {
         domain.empty_coeff()
     }
 
-    fn constant_term<F: FieldExt>(
+    fn constant_term<F: Field>(
         poly_len: usize,
         chunk_size: usize,
         chunk_index: usize,
         scalar: F,
     ) -> Vec<F> {
-        let mut chunk = vec![F::zero(); cmp::min(chunk_size, poly_len - chunk_size * chunk_index)];
+        let mut chunk = vec![F::ZERO; cmp::min(chunk_size, poly_len - chunk_size * chunk_index)];
         if chunk_index == 0 {
             chunk[0] = scalar;
         }
         chunk
     }
 
-    fn linear_term<F: FieldExt>(
+    fn linear_term<F: WithSmallOrderMulGroup<3>>(
         _: &EvaluationDomain<F>,
         poly_len: usize,
         chunk_size: usize,
         chunk_index: usize,
         scalar: F,
     ) -> Vec<F> {
-        let mut chunk = vec![F::zero(); cmp::min(chunk_size, poly_len - chunk_size * chunk_index)];
+        let mut chunk = vec![F::ZERO; cmp::min(chunk_size, poly_len - chunk_size * chunk_index)];
         // If the chunk size is 1 (e.g. if we have a small k and many threads), then the
         // linear coefficient is the second chunk. Otherwise, the chunk size is greater
         // than one, and the linear coefficient is the second element of the first chunk.
@@ -504,7 +508,7 @@ impl BasisOps for Coeff {
         chunk
     }
 
-    fn get_chunk_of_rotated<F: FieldExt>(
+    fn get_chunk_of_rotated<F: WithSmallOrderMulGroup<3>>(
         _: &EvaluationDomain<F>,
         _: usize,
         _: usize,
@@ -516,11 +520,13 @@ impl BasisOps for Coeff {
 }
 
 impl BasisOps for LagrangeCoeff {
-    fn empty_poly<F: FieldExt>(domain: &EvaluationDomain<F>) -> Polynomial<F, Self> {
+    fn empty_poly<F: WithSmallOrderMulGroup<3>>(
+        domain: &EvaluationDomain<F>,
+    ) -> Polynomial<F, Self> {
         domain.empty_lagrange()
     }
 
-    fn constant_term<F: FieldExt>(
+    fn constant_term<F: Field>(
         poly_len: usize,
         chunk_size: usize,
         chunk_index: usize,
@@ -529,7 +535,7 @@ impl BasisOps for LagrangeCoeff {
         vec![scalar; cmp::min(chunk_size, poly_len - chunk_size * chunk_index)]
     }
 
-    fn linear_term<F: FieldExt>(
+    fn linear_term<F: WithSmallOrderMulGroup<3>>(
         domain: &EvaluationDomain<F>,
         poly_len: usize,
         chunk_size: usize,
@@ -540,7 +546,7 @@ impl BasisOps for LagrangeCoeff {
         let omega = domain.get_omega();
         let start = chunk_size * chunk_index;
         (0..cmp::min(chunk_size, poly_len - start))
-            .scan(omega.pow_vartime(&[start as u64]) * scalar, |acc, _| {
+            .scan(omega.pow_vartime([start as u64]) * scalar, |acc, _| {
                 let ret = *acc;
                 *acc *= omega;
                 Some(ret)
@@ -548,7 +554,7 @@ impl BasisOps for LagrangeCoeff {
             .collect()
     }
 
-    fn get_chunk_of_rotated<F: FieldExt>(
+    fn get_chunk_of_rotated<F: WithSmallOrderMulGroup<3>>(
         _: &EvaluationDomain<F>,
         chunk_size: usize,
         chunk_index: usize,
@@ -560,11 +566,13 @@ impl BasisOps for LagrangeCoeff {
 }
 
 impl BasisOps for ExtendedLagrangeCoeff {
-    fn empty_poly<F: FieldExt>(domain: &EvaluationDomain<F>) -> Polynomial<F, Self> {
+    fn empty_poly<F: WithSmallOrderMulGroup<3>>(
+        domain: &EvaluationDomain<F>,
+    ) -> Polynomial<F, Self> {
         domain.empty_extended()
     }
 
-    fn constant_term<F: FieldExt>(
+    fn constant_term<F: Field>(
         poly_len: usize,
         chunk_size: usize,
         chunk_index: usize,
@@ -573,7 +581,7 @@ impl BasisOps for ExtendedLagrangeCoeff {
         vec![scalar; cmp::min(chunk_size, poly_len - chunk_size * chunk_index)]
     }
 
-    fn linear_term<F: FieldExt>(
+    fn linear_term<F: WithSmallOrderMulGroup<3>>(
         domain: &EvaluationDomain<F>,
         poly_len: usize,
         chunk_size: usize,
@@ -585,7 +593,7 @@ impl BasisOps for ExtendedLagrangeCoeff {
         let start = chunk_size * chunk_index;
         (0..cmp::min(chunk_size, poly_len - start))
             .scan(
-                omega.pow_vartime(&[start as u64]) * F::ZETA * scalar,
+                omega.pow_vartime([start as u64]) * F::ZETA * scalar,
                 |acc, _| {
                     let ret = *acc;
                     *acc *= omega;
@@ -595,7 +603,7 @@ impl BasisOps for ExtendedLagrangeCoeff {
             .collect()
     }
 
-    fn get_chunk_of_rotated<F: FieldExt>(
+    fn get_chunk_of_rotated<F: WithSmallOrderMulGroup<3>>(
         domain: &EvaluationDomain<F>,
         chunk_size: usize,
         chunk_index: usize,
@@ -608,6 +616,7 @@ impl BasisOps for ExtendedLagrangeCoeff {
 
 #[cfg(test)]
 mod tests {
+    use group::ff::Field;
     use pasta_curves::pallas;
 
     use super::{get_chunk_params, new_evaluator, Ast, BasisOps, Evaluator};
@@ -643,8 +652,8 @@ mod tests {
             evaluator.register_poly(B::empty_poly(&domain));
 
             // With the bug present, these will panic.
-            let _ = evaluator.evaluate(&Ast::ConstantTerm(pallas::Base::zero()), &domain);
-            let _ = evaluator.evaluate(&Ast::LinearTerm(pallas::Base::zero()), &domain);
+            let _ = evaluator.evaluate(&Ast::ConstantTerm(pallas::Base::ZERO), &domain);
+            let _ = evaluator.evaluate(&Ast::LinearTerm(pallas::Base::ZERO), &domain);
         }
 
         test_case(k, new_evaluator::<_, _, Coeff>(|| {}));

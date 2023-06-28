@@ -239,7 +239,7 @@ pub mod tests {
                 Value::known(scalar_fixed),
             )?;
 
-            let (result, _) = base.mul(layouter.namespace(|| "random [a]B"), by)?;
+            let (result, _) = base.mul(layouter.namespace(|| "random [a]B"), &by)?;
             constrain_equal_non_id(
                 chip.clone(),
                 layouter.namespace(|| "random [a]B"),
@@ -266,7 +266,7 @@ pub mod tests {
                 layouter.namespace(|| LAST_DOUBLING),
                 Value::known(scalar_fixed),
             )?;
-            let (result, _) = base.mul(layouter.namespace(|| "mul with double"), by)?;
+            let (result, _) = base.mul(layouter.namespace(|| "mul with double"), &by)?;
 
             constrain_equal_non_id(
                 chip.clone(),
@@ -286,7 +286,7 @@ pub mod tests {
                 layouter.namespace(|| "0"),
                 Value::known(scalar_fixed),
             )?;
-            let (result, _) = base.mul(layouter.namespace(|| "mul by zero"), zero)?;
+            let (result, _) = base.mul(layouter.namespace(|| "mul by zero"), &zero)?;
             result
                 .inner()
                 .is_identity()
@@ -301,7 +301,7 @@ pub mod tests {
                 layouter.namespace(|| "-1"),
                 Value::known(scalar_fixed),
             )?;
-            let (result, _) = base.mul(layouter.namespace(|| "mul by -1"), neg_1)?;
+            let (result, _) = base.mul(layouter.namespace(|| "mul by -1"), &neg_1)?;
             constrain_equal_non_id(
                 chip,
                 layouter.namespace(|| "mul by -1"),

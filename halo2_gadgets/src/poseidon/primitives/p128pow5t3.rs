@@ -22,7 +22,7 @@ impl Spec<Fp, 3, 2> for P128Pow5T3 {
     }
 
     fn sbox(val: Fp) -> Fp {
-        val.pow_vartime(&[5])
+        val.pow_vartime([5])
     }
 
     fn secure_mds() -> usize {
@@ -31,9 +31,9 @@ impl Spec<Fp, 3, 2> for P128Pow5T3 {
 
     fn constants() -> (Vec<[Fp; 3]>, Mds<Fp, 3>, Mds<Fp, 3>) {
         (
-            super::fp::ROUND_CONSTANTS[..].to_vec(),
-            super::fp::MDS,
-            super::fp::MDS_INV,
+            super::fp::ROUND_CONSTANTS_T_3[..].to_vec(),
+            super::fp::MDS_T_3,
+            super::fp::MDS_INV_T_3,
         )
     }
 }
@@ -48,7 +48,7 @@ impl Spec<Fq, 3, 2> for P128Pow5T3 {
     }
 
     fn sbox(val: Fq) -> Fq {
-        val.pow_vartime(&[5])
+        val.pow_vartime([5])
     }
 
     fn secure_mds() -> usize {
@@ -57,39 +57,41 @@ impl Spec<Fq, 3, 2> for P128Pow5T3 {
 
     fn constants() -> (Vec<[Fq; 3]>, Mds<Fq, 3>, Mds<Fq, 3>) {
         (
-            super::fq::ROUND_CONSTANTS[..].to_vec(),
-            super::fq::MDS,
-            super::fq::MDS_INV,
+            super::fq::ROUND_CONSTANTS_T_3[..].to_vec(),
+            super::fq::MDS_T_3,
+            super::fq::MDS_INV_T_3,
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ff::PrimeField;
+    use ff::{Field, FromUniformBytes, PrimeField};
     use std::marker::PhantomData;
-
-    use pasta_curves::arithmetic::FieldExt;
 
     use super::{
         super::{fp, fq},
         Fp, Fq,
     };
-    use crate::poseidon::primitives::{permute, ConstantLength, Hash, Spec};
+    use crate::poseidon::primitives::{
+        generate_constants, permute, ConstantLength, Hash, Mds, Spec,
+    };
 
     /// The same Poseidon specification as poseidon::P128Pow5T3, but constructed
     /// such that its constants will be generated at runtime.
     #[derive(Debug)]
-    pub struct P128Pow5T3Gen<F: FieldExt, const SECURE_MDS: usize>(PhantomData<F>);
+    pub struct P128Pow5T3Gen<F: Field, const SECURE_MDS: usize>(PhantomData<F>);
 
-    impl<F: FieldExt, const SECURE_MDS: usize> P128Pow5T3Gen<F, SECURE_MDS> {
+    impl<F: Field, const SECURE_MDS: usize> P128Pow5T3Gen<F, SECURE_MDS> {
         #![allow(dead_code)]
         pub fn new() -> Self {
             P128Pow5T3Gen(PhantomData::default())
         }
     }
 
-    impl<F: FieldExt, const SECURE_MDS: usize> Spec<F, 3, 2> for P128Pow5T3Gen<F, SECURE_MDS> {
+    impl<F: FromUniformBytes<64> + Ord, const SECURE_MDS: usize> Spec<F, 3, 2>
+        for P128Pow5T3Gen<F, SECURE_MDS>
+    {
         fn full_rounds() -> usize {
             8
         }
@@ -99,17 +101,21 @@ mod tests {
         }
 
         fn sbox(val: F) -> F {
-            val.pow_vartime(&[5])
+            val.pow_vartime([5])
         }
 
         fn secure_mds() -> usize {
             SECURE_MDS
         }
+
+        fn constants() -> (Vec<[F; 3]>, Mds<F, 3>, Mds<F, 3>) {
+            generate_constants::<_, Self, 3, 2>()
+        }
     }
 
     #[test]
     fn verify_constants() {
-        fn verify_constants_helper<F: FieldExt>(
+        fn verify_constants_helper<F: FromUniformBytes<64> + Ord>(
             expected_round_constants: [[F; 3]; 64],
             expected_mds: [[F; 3]; 3],
             expected_mds_inv: [[F; 3]; 3],
@@ -137,8 +143,8 @@ mod tests {
             }
         }
 
-        verify_constants_helper(fp::ROUND_CONSTANTS, fp::MDS, fp::MDS_INV);
-        verify_constants_helper(fq::ROUND_CONSTANTS, fq::MDS, fq::MDS_INV);
+        verify_constants_helper(fp::ROUND_CONSTANTS_T_3, fp::MDS_T_3, fp::MDS_INV_T_3);
+        verify_constants_helper(fq::ROUND_CONSTANTS_T_3, fq::MDS_T_3, fq::MDS_INV_T_3);
     }
 
     #[test]
@@ -190,7 +196,7 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fp, P128Pow5T3Gen<Fp, 0>, 3, 2>(&mut input, &fp::MDS, &fp::ROUND_CONSTANTS);
+            permute::<Fp, P128Pow5T3Gen<Fp, 0>, 3, 2>(&mut input, &fp::MDS_T_3, &fp::ROUND_CONSTANTS_T_3);
             assert_eq!(input, expected_output);
         }
 
@@ -241,7 +247,7 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fq, P128Pow5T3Gen<Fq, 0>, 3, 2>(&mut input, &fq::MDS, &fq::ROUND_CONSTANTS);
+            permute::<Fq, P128Pow5T3Gen<Fq, 0>, 3, 2>(&mut input, &fq::MDS_T_3, &fq::ROUND_CONSTANTS_T_3);
             assert_eq!(input, expected_output);
         }
     }

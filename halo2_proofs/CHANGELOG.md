@@ -7,6 +7,63 @@ and this project adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.3.0] - 2023-03-21
+### Breaking circuit changes
+- `halo2_proofs::circuit::floor_planner::V1` was relying internally on the Rust
+  standard library's [`slice::sort_unstable_by_key`]; while it is deterministic,
+  it is not stable across targets or compiler versions. In particular, an edge
+  case within the sorting algorithm differed between 32-bit and 64-bit targets.
+  This meant that some circuits (like the [Orchard circuit]) would be laid out
+  differently, resulting in incompatible verifying keys. This release makes a
+  **breaking change** to the behaviour of `floor_planner::V1` to instead use a
+  stable sort.
+  - To retain compatibility with the Orchard circuit as deployed in [Zcash NU5],
+    a new `floor-planner-v1-legacy-pdqsort` feature flag has been added. When
+    enabled, `floor_planner::V1` instead pins its behaviour to the version of
+    `slice::sort_unstable_by_key` from Rust 1.56.1, always matching how that
+    version behaved on 64-bit targets.
+
+[`slice::sort_unstable_by_key`]: https://doc.rust-lang.org/stable/std/primitive.slice.html#method.sort_unstable_by_key
+[Orchard circuit]: https://github.com/zcash/orchard/blob/0.3.0/src/circuit.rs
+[Zcash NU5]: https://zips.z.cash/zip-0252
+
+### Added
+- The following structs now derive the `Eq` trait:
+  - `halo2_proofs::dev`:
+    - `TracingFloorPlanner` extension type which is a floor planner that uses
+      `tracing` spans and events for instrumenting your circuit synthesis
+       during keygen and proving.
+    - `failure::FailureLocation`
+    - `failure::VerifyFailure`
+    - `metadata::Gate`
+    - `metadata::Constraint`
+    - `metadata::Region`
+  - `halo2_proofs::poly::Rotation`
+- `halo2_proofs::arithmetic::FftGroup`
+- `halo2_proofs::circuit`:
+  - `Region::instance_value`, to provide access to instance values within a
+    region. This method is only provided for convenience; it does not create any
+    constraints. Callers still need to use `Region::assign_advice_from_instance`
+    to constrain the values in their circuit.
+
+### Changed
+- Migrated to `ff 0.13`, `group 0.13`, `pasta_curves 0.5`.
+- APIs with `F: pasta_curves::arithmetic::FieldExt` bounds have been changed to
+  use `ff` traits directly.
+- `halo2_proofs::arithmetic`:
+  - `best_fft, recursive_butterfly_arithmetic` now use the `FftGroup` trait
+    instead of the (now-removed) `pasta_curves::arithmetic::Group` trait.
+- `halo2_proofs::circuit::layouter`:
+  - The `RegionLayouter` trait now requires implementing an `instance_value`
+    method, to back `Region::instance_value`.
+- `halo2_proofs::plonk`
+  - `VirtualCells`
+    - `query_any` now panics if a non-`cur` `Rotation` is used with the
+      `Column<Fixed>` variant.
+    - `query_fixed` now no longer takes a `Rotation` argument,
+      and can only be used to query the current rotation.
+  - `Error` is now a [`non_exhaustive`](https://doc.rust-lang.org/reference/attributes/type_system.html) type.
+
 ## [0.2.0] - 2022-06-23
 ### Added
 - `halo2_proofs::circuit::Value`, a more usable and type-safe replacement for

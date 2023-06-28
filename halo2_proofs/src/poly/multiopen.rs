@@ -6,10 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
-use crate::{
-    arithmetic::{CurveAffine, FieldExt},
-    transcript::ChallengeScalar,
-};
+use crate::{arithmetic::CurveAffine, transcript::ChallengeScalar};
 
 mod prover;
 mod verifier;
@@ -136,7 +133,7 @@ type IntermediateSets<F, Q> = (
     Vec<Vec<F>>,
 );
 
-fn construct_intermediate_sets<F: FieldExt, I, Q: Query<F>>(queries: I) -> IntermediateSets<F, Q>
+fn construct_intermediate_sets<F: Field + Ord, I, Q: Query<F>>(queries: I) -> IntermediateSets<F, Q>
 where
     I: IntoIterator<Item = Q> + Clone,
 {
@@ -389,10 +386,11 @@ mod tests {
 
 #[cfg(test)]
 mod proptests {
+    use group::ff::FromUniformBytes;
     use proptest::{collection::vec, prelude::*, sample::select};
 
     use super::construct_intermediate_sets;
-    use pasta_curves::{arithmetic::FieldExt, Fp};
+    use pasta_curves::Fp;
 
     use std::convert::TryFrom;
 
@@ -424,7 +422,7 @@ mod proptests {
         fn arb_point()(
             bytes in vec(any::<u8>(), 64)
         ) -> Fp {
-            Fp::from_bytes_wide(&<[u8; 64]>::try_from(bytes).unwrap())
+            Fp::from_uniform_bytes(&<[u8; 64]>::try_from(bytes).unwrap())
         }
     }
 

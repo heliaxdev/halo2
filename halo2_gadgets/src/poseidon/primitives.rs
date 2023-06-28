@@ -5,7 +5,7 @@ use std::fmt;
 use std::iter;
 use std::marker::PhantomData;
 
-use halo2_proofs::arithmetic::FieldExt;
+use group::ff::{Field, FromUniformBytes, PrimeField};
 
 pub(crate) mod fp;
 pub(crate) mod fq;
@@ -16,21 +16,23 @@ pub(crate) mod mds;
 pub(crate) mod test_vectors;
 
 mod p128pow5t3;
+mod p128pow5t5;
 pub use p128pow5t3::P128Pow5T3;
+pub use p128pow5t5::P128Pow5T5;
 
 use grain::SboxType;
 
 /// The type used to hold permutation state.
-pub(crate) type State<F, const T: usize> = [F; T];
+pub type State<F, const T: usize> = [F; T];
 
 /// The type used to hold sponge rate.
 pub(crate) type SpongeRate<F, const RATE: usize> = [Option<F>; RATE];
 
 /// The type used to hold the MDS matrix and its inverse.
-pub(crate) type Mds<F, const T: usize> = [[F; T]; T];
+pub type Mds<F, const T: usize> = [[F; T]; T];
 
 /// A specification for a Poseidon permutation.
-pub trait Spec<F: FieldExt, const T: usize, const RATE: usize>: fmt::Debug {
+pub trait Spec<F: Field, const T: usize, const RATE: usize>: fmt::Debug {
     /// The number of full rounds for this specification.
     ///
     /// This must be an even number.
@@ -50,33 +52,41 @@ pub trait Spec<F: FieldExt, const T: usize, const RATE: usize>: fmt::Debug {
     fn secure_mds() -> usize;
 
     /// Generates `(round_constants, mds, mds^-1)` corresponding to this specification.
-    fn constants() -> (Vec<[F; T]>, Mds<F, T>, Mds<F, T>) {
-        let r_f = Self::full_rounds();
-        let r_p = Self::partial_rounds();
+    fn constants() -> (Vec<[F; T]>, Mds<F, T>, Mds<F, T>);
+}
 
-        let mut grain = grain::Grain::new(SboxType::Pow, T as u16, r_f as u16, r_p as u16);
+/// Generates `(round_constants, mds, mds^-1)` corresponding to this specification.
+pub fn generate_constants<
+    F: FromUniformBytes<64> + Ord,
+    S: Spec<F, T, RATE>,
+    const T: usize,
+    const RATE: usize,
+>() -> (Vec<[F; T]>, Mds<F, T>, Mds<F, T>) {
+    let r_f = S::full_rounds();
+    let r_p = S::partial_rounds();
 
-        let round_constants = (0..(r_f + r_p))
-            .map(|_| {
-                let mut rc_row = [F::zero(); T];
-                for (rc, value) in rc_row
-                    .iter_mut()
-                    .zip((0..T).map(|_| grain.next_field_element()))
-                {
-                    *rc = value;
-                }
-                rc_row
-            })
-            .collect();
+    let mut grain = grain::Grain::new(SboxType::Pow, T as u16, r_f as u16, r_p as u16);
 
-        let (mds, mds_inv) = mds::generate_mds::<F, T>(&mut grain, Self::secure_mds());
+    let round_constants = (0..(r_f + r_p))
+        .map(|_| {
+            let mut rc_row = [F::ZERO; T];
+            for (rc, value) in rc_row
+                .iter_mut()
+                .zip((0..T).map(|_| grain.next_field_element()))
+            {
+                *rc = value;
+            }
+            rc_row
+        })
+        .collect();
 
-        (round_constants, mds, mds_inv)
-    }
+    let (mds, mds_inv) = mds::generate_mds::<F, T>(&mut grain, S::secure_mds());
+
+    (round_constants, mds, mds_inv)
 }
 
 /// Runs the Poseidon permutation on the given state.
-pub(crate) fn permute<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
+pub fn permute<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
     state: &mut State<F, T>,
     mds: &Mds<F, T>,
     round_constants: &[[F; T]],
@@ -85,7 +95,7 @@ pub(crate) fn permute<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RA
     let r_p = S::partial_rounds();
 
     let apply_mds = |state: &mut State<F, T>| {
-        let mut new_state = [F::zero(); T];
+        let mut new_state = [F::ZERO; T];
         // Matrix multiplication
         #[allow(clippy::needless_range_loop)]
         for i in 0..T {
@@ -123,7 +133,7 @@ pub(crate) fn permute<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RA
         });
 }
 
-fn poseidon_sponge<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
+fn poseidon_sponge<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>(
     state: &mut State<F, T>,
     input: Option<&Absorbing<F, RATE>>,
     mds_matrix: &Mds<F, T>,
@@ -157,7 +167,7 @@ pub trait SpongeMode: private::SealedSpongeMode {}
 
 /// The absorbing state of the `Sponge`.
 #[derive(Debug)]
-pub struct Absorbing<F, const RATE: usize>(pub(crate) SpongeRate<F, RATE>);
+pub struct Absorbing<F, const RATE: usize>(pub SpongeRate<F, RATE>);
 
 /// The squeezing state of the `Sponge`.
 #[derive(Debug)]
@@ -167,7 +177,8 @@ impl<F, const RATE: usize> SpongeMode for Absorbing<F, RATE> {}
 impl<F, const RATE: usize> SpongeMode for Squeezing<F, RATE> {}
 
 impl<F: fmt::Debug, const RATE: usize> Absorbing<F, RATE> {
-    pub(crate) fn init_with(val: F) -> Self {
+    ///
+    pub fn init_with(val: F) -> Self {
         Self(
             iter::once(Some(val))
                 .chain((1..RATE).map(|_| None))
@@ -179,30 +190,48 @@ impl<F: fmt::Debug, const RATE: usize> Absorbing<F, RATE> {
 }
 
 /// A Poseidon sponge.
-pub(crate) struct Sponge<
-    F: FieldExt,
+#[derive(Debug)]
+pub struct Sponge<
+    F: Field,
     S: Spec<F, T, RATE>,
     M: SpongeMode,
     const T: usize,
     const RATE: usize,
 > {
     mode: M,
-    state: State<F, T>,
-    mds_matrix: Mds<F, T>,
-    round_constants: Vec<[F; T]>,
+    ///
+    pub state: State<F, T>,
+    ///
+    pub  mds_matrix: Mds<F, T>,
+    ///
+    pub round_constants: Vec<[F; T]>,
     _marker: PhantomData<S>,
 }
 
-impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
+impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
     Sponge<F, S, Absorbing<F, RATE>, T, RATE>
 {
     /// Constructs a new sponge for the given Poseidon specification.
-    pub(crate) fn new(initial_capacity_element: F) -> Self {
+    fn new(initial_capacity_element: F) -> Self {
         let (round_constants, mds_matrix, _) = S::constants();
 
         let mode = Absorbing([None; RATE]);
-        let mut state = [F::zero(); T];
+        let mut state = [F::ZERO; T];
         state[RATE] = initial_capacity_element;
+
+        Sponge {
+            mode,
+            state,
+            mds_matrix,
+            round_constants,
+            _marker: PhantomData::default(),
+        }
+    }
+
+    /// Init the state of sponge.
+    pub fn init(state: [F; T]) -> Self {
+        let (round_constants, mds_matrix, _) = S::constants();
+        let mode = Absorbing([None; RATE]);
 
         Sponge {
             mode,
@@ -251,7 +280,7 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
     }
 }
 
-impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
+impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
     Sponge<F, S, Squeezing<F, RATE>, T, RATE>
 {
     /// Squeezes an element from the sponge.
@@ -275,7 +304,7 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
 }
 
 /// A domain in which a Poseidon hash function is being used.
-pub trait Domain<F: FieldExt, const RATE: usize> {
+pub trait Domain<F: Field, const RATE: usize> {
     /// Iterator that outputs padding field elements.
     type Padding: IntoIterator<Item = F>;
 
@@ -295,7 +324,7 @@ pub trait Domain<F: FieldExt, const RATE: usize> {
 #[derive(Clone, Copy, Debug)]
 pub struct ConstantLength<const L: usize>;
 
-impl<F: FieldExt, const RATE: usize, const L: usize> Domain<F, RATE> for ConstantLength<L> {
+impl<F: PrimeField, const RATE: usize, const L: usize> Domain<F, RATE> for ConstantLength<L> {
     type Padding = iter::Take<iter::Repeat<F>>;
 
     fn name() -> String {
@@ -315,13 +344,13 @@ impl<F: FieldExt, const RATE: usize, const L: usize> Domain<F, RATE> for Constan
         // Poseidon authors encode the constant length into the capacity element, ensuring
         // that inputs of different lengths do not share the same permutation.
         let k = (L + RATE - 1) / RATE;
-        iter::repeat(F::zero()).take(k * RATE - L)
+        iter::repeat(F::ZERO).take(k * RATE - L)
     }
 }
 
 /// A Poseidon hash function, built around a sponge.
 pub struct Hash<
-    F: FieldExt,
+    F: Field,
     S: Spec<F, T, RATE>,
     D: Domain<F, RATE>,
     const T: usize,
@@ -331,7 +360,7 @@ pub struct Hash<
     _domain: PhantomData<D>,
 }
 
-impl<F: FieldExt, S: Spec<F, T, RATE>, D: Domain<F, RATE>, const T: usize, const RATE: usize>
+impl<F: Field, S: Spec<F, T, RATE>, D: Domain<F, RATE>, const T: usize, const RATE: usize>
     fmt::Debug for Hash<F, S, D, T, RATE>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -345,7 +374,7 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, D: Domain<F, RATE>, const T: usize, const
     }
 }
 
-impl<F: FieldExt, S: Spec<F, T, RATE>, D: Domain<F, RATE>, const T: usize, const RATE: usize>
+impl<F: Field, S: Spec<F, T, RATE>, D: Domain<F, RATE>, const T: usize, const RATE: usize>
     Hash<F, S, D, T, RATE>
 {
     /// Initializes a new hasher.
@@ -357,7 +386,7 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, D: Domain<F, RATE>, const T: usize, const
     }
 }
 
-impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize, const L: usize>
+impl<F: PrimeField, S: Spec<F, T, RATE>, const T: usize, const RATE: usize, const L: usize>
     Hash<F, S, ConstantLength<L>, T, RATE>
 {
     /// Hashes the given input.
@@ -374,7 +403,7 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize, const 
 
 #[cfg(test)]
 mod tests {
-    use halo2_proofs::arithmetic::FieldExt;
+    use group::ff::PrimeField;
     use pasta_curves::pallas;
 
     use super::{permute, ConstantLength, Hash, P128Pow5T3 as OrchardNullifier, Spec};
@@ -392,6 +421,26 @@ mod tests {
         // taking the first state element as the output.
         let mut state = [message[0], message[1], pallas::Base::from_u128(2 << 64)];
         permute::<_, OrchardNullifier, 3, 2>(&mut state, &mds, &round_constants);
+        assert_eq!(state[0], result);
+    }
+
+    #[test]
+    fn test_poseidon_4_inputs() {
+        use pasta_curves::vesta::Base as Fq;
+        use crate::poseidon::primitives::P128Pow5T5;
+
+        let message = [Fq::from(1), Fq::from(12), Fq::from(121), Fq::from(1212)];
+
+        let (round_constants, mds, _) = <P128Pow5T5 as Spec<Fq, 5, 4>>::constants();
+
+        let hasher = Hash::<_, P128Pow5T5, ConstantLength<4>, 5, 4>::init();
+        let result = hasher.hash(message);
+
+        // The result should be equivalent to just directly applying the permutation and
+        // taking the first state element as the output.
+        let mut state = [message[0], message[1], message[2], message[3], Fq::from_u128(2 << 65)];
+        permute::<_, P128Pow5T5, 5, 4>(&mut state, &mds, &round_constants);
+
         assert_eq!(state[0], result);
     }
 }

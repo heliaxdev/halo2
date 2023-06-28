@@ -6,9 +6,7 @@ use crate::arithmetic::parallelize;
 use crate::plonk::Assigned;
 use crate::helpers::SerdePrimeField;
 
-
 use group::ff::{BatchInvert, Field, PrimeField};
-use pasta_curves::arithmetic::FieldExt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, RangeFrom, RangeFull};
@@ -135,7 +133,7 @@ impl<F, B> Polynomial<F, B> {
     }
 }
 
-pub(crate) fn batch_invert_assigned<F: FieldExt>(
+pub(crate) fn batch_invert_assigned<F: Field>(
     assigned: Vec<Polynomial<Assigned<F>, LagrangeCoeff>>,
 ) -> Vec<Polynomial<F, LagrangeCoeff>> {
     let mut assigned_denominators: Vec<_> = assigned
@@ -160,9 +158,7 @@ pub(crate) fn batch_invert_assigned<F: FieldExt>(
     assigned
         .iter()
         .zip(assigned_denominators.into_iter())
-        .map(|(poly, inv_denoms)| {
-            poly.invert(inv_denoms.into_iter().map(|d| d.unwrap_or_else(F::one)))
-        })
+        .map(|(poly, inv_denoms)| poly.invert(inv_denoms.into_iter().map(|d| d.unwrap_or(F::ONE))))
         .collect()
 }
 
@@ -307,7 +303,7 @@ impl<F: Field, B: Basis> Mul<F> for Polynomial<F, B> {
 /// Describes the relative rotation of a vector. Negative numbers represent
 /// reverse (leftmost) rotations and positive numbers represent forward (rightmost)
 /// rotations. Zero represents no rotation.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Rotation(pub i32);
 
 impl Rotation {
