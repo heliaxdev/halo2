@@ -98,3 +98,6 @@ bench = false
 [[example]]
 name = "circuit-layout"
 required-features = ["test-dev-graph"]
+
+[[example]]
+name = "serialization"
