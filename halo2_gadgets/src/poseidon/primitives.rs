@@ -280,6 +280,19 @@ impl<F: Field, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
             );
         }
     }
+    /// Transitions the sponge into its absorbing state.
+    pub fn finish_squeezing(mut self) -> Sponge<F, S, Absorbing<F, RATE>, T, RATE> {
+        permute::<F, S, T, RATE>(&mut self.state, &self.mds_matrix, &self.round_constants);
+        let mode = Absorbing([None; RATE]);
+
+        Sponge {
+            mode,
+            state: self.state,
+            mds_matrix: self.mds_matrix,
+            round_constants: self.round_constants,
+            _marker: PhantomData::default(),
+        }
+    }
 }
 
 /// A domain in which a Poseidon hash function is being used.
