@@ -30,6 +30,7 @@ use halo2_proofs::transcript::{EncodedChallenge, Transcript, TranscriptRead, Tra
 
 const RATE: usize = 2;
 
+/// A Poseidon transcript
 #[derive(Debug)]
 pub struct PoseidonRead<R: Read, E: EncodedChallenge<vesta::Affine>> {
     state: PoseidonSponge<vesta::Base, P128Pow5T3, Absorbing<vesta::Base, RATE>, 3, RATE>,
@@ -133,7 +134,7 @@ impl<R: Read> Transcript<vesta::Affine, ChallengeBase<vesta::Affine>>
 /// A Poseidon transcript
 #[derive(Debug)]
 pub struct PoseidonWrite<W: Write, E: EncodedChallenge<vesta::Affine>> {
-    state: PoseidonSponge<vesta::Base, P128Pow5T3, Absorbing<vesta::Base, RATE>, 3, RATE>, //PoseidonState<C::Base, 3>,
+    state: PoseidonSponge<vesta::Base, P128Pow5T3, Absorbing<vesta::Base, RATE>, 3, RATE>,
     writer: W,
     _marker: PhantomData<(pallas::Affine, E)>,
 }
@@ -153,7 +154,6 @@ impl<W: Write, E: EncodedChallenge<vesta::Affine>> PoseidonWrite<W, E> {
     /// Conclude the interaction and return the output buffer (writer).
     pub fn finalize(self) -> W {
         // TODO: handle outstanding scalars? see issue #138
-        //dbg!(&self.state);
         self.writer
     }
 }
@@ -225,9 +225,11 @@ impl<W: Write> Transcript<vesta::Affine, ChallengeBase<vesta::Affine>>
 #[test]
 fn test_none_poseidon_transcript() {
     use halo2_proofs::{
-        circuit::{Layouter, SimpleFloorPlanner},
-        plonk::{create_proof, verify_proof, Circuit, ConstraintSystem, Error, SingleVerifier},
-        plonk::{keygen_pk, keygen_vk},
+        circuit::SimpleFloorPlanner,
+        plonk::{
+            create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ConstraintSystem, Error,
+            SingleVerifier,
+        },
         poly::commitment::Params,
     };
     use pasta_curves::EqAffine;
@@ -301,7 +303,5 @@ impl EncodedChallenge<pasta_curves::vesta::Affine> for ChallengeBase<pasta_curve
         halo2_gadgets::endoscale::util::compute_endoscalar(
             &self.inner.to_le_bits().into_iter().collect::<Vec<bool>>(),
         )
-        //let base_repr = self.inner.to_repr().into();
-        //pasta_curves::vesta::Scalar::from_repr(base_repr).unwrap()
     }
 }
