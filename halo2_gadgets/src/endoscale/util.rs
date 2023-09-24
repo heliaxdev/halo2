@@ -25,7 +25,7 @@ pub(crate) fn compute_endoscalar_pair<F: WithSmallOrderMulGroup<3>>(bits: [bool;
 ///
 /// [BGH2019]: https://eprint.iacr.org/2019/1021.pdf
 #[allow(dead_code)]
-pub(crate) fn compute_endoscalar<F: WithSmallOrderMulGroup<3>>(bits: &[bool]) -> F {
+pub fn compute_endoscalar<F: WithSmallOrderMulGroup<3>>(bits: &[bool]) -> F {
     compute_endoscalar_with_acc(None, bits)
 }
 
