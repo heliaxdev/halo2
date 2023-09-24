@@ -1,9 +1,7 @@
 [package]
 name = "halo2"
 version = "0.1.0-beta.2"
-authors = [
-    "Jack Grigg <jack@electriccoin.co>",
-]
+authors = ["Jack Grigg <jack@electriccoin.co>"]
 edition = "2021"
 rust-version = "1.56.1"
 description = "[BETA] Fast zero-knowledge proof-carrying data implementation with no trusted setup"
@@ -21,9 +19,14 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 [dependencies]
 halo2_gadgets = { version = "0.2", path = "../halo2_gadgets" }
 halo2_proofs = { version = "0.2", path = "../halo2_proofs" }
+group = "0.12.1"
+pasta_curves = "0.4.1"
+lazy_static = "1.4"
 
 [dev-dependencies]
-rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
+rand_core = { version = "0.6", default-features = false, features = [
+    "getrandom",
+] }
 
 [lib]
 bench = false

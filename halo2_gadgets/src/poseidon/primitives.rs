@@ -179,7 +179,8 @@ impl<F: fmt::Debug, const RATE: usize> Absorbing<F, RATE> {
 }
 
 /// A Poseidon sponge.
-pub(crate) struct Sponge<
+#[derive(Debug)]
+pub struct Sponge<
     F: FieldExt,
     S: Spec<F, T, RATE>,
     M: SpongeMode,
@@ -197,7 +198,7 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
     Sponge<F, S, Absorbing<F, RATE>, T, RATE>
 {
     /// Constructs a new sponge for the given Poseidon specification.
-    pub(crate) fn new(initial_capacity_element: F) -> Self {
+    pub fn new(initial_capacity_element: F) -> Self {
         let (round_constants, mds_matrix, _) = S::constants();
 
         let mode = Absorbing([None; RATE]);
@@ -214,7 +215,7 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
     }
 
     /// Absorbs an element into the sponge.
-    pub(crate) fn absorb(&mut self, value: F) {
+    pub fn absorb(&mut self, value: F) {
         for entry in self.mode.0.iter_mut() {
             if entry.is_none() {
                 *entry = Some(value);
@@ -233,7 +234,7 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
     }
 
     /// Transitions the sponge into its squeezing state.
-    pub(crate) fn finish_absorbing(mut self) -> Sponge<F, S, Squeezing<F, RATE>, T, RATE> {
+    pub fn finish_absorbing(mut self) -> Sponge<F, S, Squeezing<F, RATE>, T, RATE> {
         let mode = poseidon_sponge::<F, S, T, RATE>(
             &mut self.state,
             Some(&self.mode),
@@ -255,7 +256,7 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
     Sponge<F, S, Squeezing<F, RATE>, T, RATE>
 {
     /// Squeezes an element from the sponge.
-    pub(crate) fn squeeze(&mut self) -> F {
+    pub fn squeeze(&mut self) -> F {
         loop {
             for entry in self.mode.0.iter_mut() {
                 if let Some(e) = entry.take() {
@@ -270,6 +271,19 @@ impl<F: FieldExt, S: Spec<F, T, RATE>, const T: usize, const RATE: usize>
                 &self.mds_matrix,
                 &self.round_constants,
             );
+        }
+    }
+    /// Transitions the sponge into its absorbing state.
+    pub fn finish_squeezing(mut self) -> Sponge<F, S, Absorbing<F, RATE>, T, RATE> {
+        permute::<F, S, T, RATE>(&mut self.state, &self.mds_matrix, &self.round_constants);
+        let mode = Absorbing([None; RATE]);
+
+        Sponge {
+            mode,
+            state: self.state,
+            mds_matrix: self.mds_matrix,
+            round_constants: self.round_constants,
+            _marker: PhantomData::default(),
         }
     }
 }
