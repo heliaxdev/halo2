@@ -1,7 +1,7 @@
 use crate::{ecc::chip::NonIdentityEccPoint, utilities::decompose_running_sum::RunningSumConfig};
 
 use super::EndoscaleInstructions;
-use ff::PrimeFieldBits;
+use ff::{PrimeFieldBits, FromUniformBytes};
 use halo2_proofs::{
     arithmetic::CurveAffine,
     circuit::{AssignedCell, Layouter, Value},
@@ -26,7 +26,7 @@ pub enum Bitstring<F: PrimeFieldBits, const K: usize> {
 #[derive(Clone, Debug)]
 pub struct EndoscaleConfig<C: CurveAffine, const K: usize, const MAX_BITSTRING_LENGTH: usize>
 where
-    C::Base: PrimeFieldBits,
+    C::Base: PrimeFieldBits + FromUniformBytes<64>,
 {
     alg_1: Alg1Config<C>,
     alg_2: Alg2Config<C, K, MAX_BITSTRING_LENGTH>,
@@ -35,7 +35,7 @@ where
 impl<C: CurveAffine, const K: usize, const MAX_BITSTRING_LENGTH: usize>
     EndoscaleConfig<C, K, MAX_BITSTRING_LENGTH>
 where
-    C::Base: PrimeFieldBits,
+    C::Base: PrimeFieldBits + FromUniformBytes<64>,
 {
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
@@ -80,7 +80,7 @@ where
 impl<C: CurveAffine, const K: usize, const N: usize> EndoscaleInstructions<C>
     for EndoscaleConfig<C, K, N>
 where
-    C::Base: PrimeFieldBits,
+    C::Base: PrimeFieldBits + FromUniformBytes<64>,
 {
     type NonIdentityPoint = NonIdentityEccPoint<C>;
     type Bitstring = Bitstring<C::Base, K>;
@@ -185,7 +185,7 @@ mod tests {
     use super::{EndoscaleConfig, EndoscaleInstructions};
     use crate::ecc::chip::NonIdentityEccPoint;
 
-    use ff::PrimeFieldBits;
+    use ff::{PrimeFieldBits, FromUniformBytes};
     use halo2_proofs::{
         arithmetic::CurveAffine,
         circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -203,7 +203,7 @@ mod tests {
         const NUM_BITS_DIV_K_CEIL: usize,
     >
     where
-        C::Base: PrimeFieldBits,
+        C::Base: PrimeFieldBits + FromUniformBytes<64>,
     {
         bitstring: Value<[bool; NUM_BITS]>,
         pub_input_rows: [usize; NUM_BITS_DIV_K_CEIL],
@@ -217,7 +217,7 @@ mod tests {
             const NUM_BITS_DIV_K_CEIL: usize,
         > Circuit<C::Base> for BaseCircuit<C, K, NUM_BITS, NUM_BITS_DIV_K_CEIL>
     where
-        C::Base: PrimeFieldBits,
+        C::Base: PrimeFieldBits + FromUniformBytes<64>,
     {
         type Config = (EndoscaleConfig<C, K, 248>, Column<Advice>);
         type FloorPlanner = SimpleFloorPlanner;
@@ -305,7 +305,7 @@ mod tests {
         const NUM_BITS_DIV_K_CEIL: usize,
     >
     where
-        C::Base: PrimeFieldBits,
+        C::Base: PrimeFieldBits + FromUniformBytes<64>,
     {
         bitstring: Value<[bool; NUM_BITS]>,
         pub_input_rows: [usize; NUM_BITS_DIV_K_CEIL],
@@ -319,7 +319,7 @@ mod tests {
             const NUM_BITS_DIV_K_CEIL: usize,
         > Circuit<C::Base> for ScalarCircuit<C, K, NUM_BITS, NUM_BITS_DIV_K_CEIL>
     where
-        C::Base: PrimeFieldBits,
+        C::Base: PrimeFieldBits + FromUniformBytes<64>,
     {
         type Config = EndoscaleConfig<C, K, 248>;
         type FloorPlanner = SimpleFloorPlanner;
@@ -382,8 +382,8 @@ mod tests {
         const NUM_BITS_DIV_K_CEIL: usize,
     >()
     where
-        BaseCurve::Base: PrimeFieldBits,
-        ScalarCurve::Base: PrimeFieldBits,
+        BaseCurve::Base: PrimeFieldBits + FromUniformBytes<64>,
+        ScalarCurve::Base: PrimeFieldBits+ FromUniformBytes<64>,
     {
         use ff::Field;
         use halo2_proofs::dev::MockProver;
@@ -405,7 +405,7 @@ mod tests {
                 .collect::<Vec<_>>();
             bitstring
                 .chunks(K)
-                .map(|chunk| compute_endoscalar_with_acc(Some(BaseCurve::Base::zero()), chunk))
+                .map(|chunk| compute_endoscalar_with_acc(Some(BaseCurve::Base::ZERO), chunk))
                 .collect()
         };
 
@@ -420,7 +420,7 @@ mod tests {
                 .collect::<Vec<_>>();
             bitstring
                 .chunks(K)
-                .map(|chunk| compute_endoscalar_with_acc(Some(ScalarCurve::Base::zero()), chunk))
+                .map(|chunk| compute_endoscalar_with_acc(Some(ScalarCurve::Base::ZERO), chunk))
                 .collect()
         };
 

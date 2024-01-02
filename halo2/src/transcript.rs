@@ -5,12 +5,13 @@ use halo2_gadgets::{
     utilities::{bitstring::BitstringInstructions, RangeConstrained},
 };
 use halo2_proofs::{
-    arithmetic::{CurveAffine, FieldExt},
+    arithmetic::CurveAffine,
     circuit::{AssignedCell, Layouter, Value},
     plonk::Error,
+    pasta::group::ff::PrimeField,
 };
 
-pub trait DuplexInstructions<F: FieldExt> {
+pub trait DuplexInstructions<F: PrimeField> {
     fn absorb(
         &mut self,
         layouter: impl Layouter<F>,

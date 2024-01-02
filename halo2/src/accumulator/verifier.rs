@@ -120,10 +120,10 @@ mod tests {
         utilities::{bitstring::BitstringInstructions, UtilitiesInstructions},
     };
     use halo2_proofs::{
-        arithmetic::{CurveAffine, Field, FieldExt},
+        arithmetic::{CurveAffine, Field},
         circuit::{AssignedCell, Chip, Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
-        pasta::{group::ff::PrimeFieldBits, EpAffine, EqAffine},
+        pasta::{group::ff::{PrimeFieldBits, PrimeField}, EpAffine, EqAffine},
         plonk::{
             create_proof, keygen_pk, keygen_vk, Circuit, ConstraintSystem, Error, VerifyingKey,
         },
@@ -236,7 +236,7 @@ mod tests {
 
     #[derive(PartialEq, Eq, Debug, Clone)]
     struct TranscriptChip;
-    impl<F: FieldExt> Chip<F> for TranscriptChip {
+    impl<F: PrimeField> Chip<F> for TranscriptChip {
         type Config = ();
 
         type Loaded = ();
@@ -249,7 +249,7 @@ mod tests {
             todo!()
         }
     }
-    impl<F: FieldExt> DuplexInstructions<F> for TranscriptChip {
+    impl<F: PrimeField> DuplexInstructions<F> for TranscriptChip {
         fn absorb(
             &mut self,
             layouter: impl Layouter<F>,
@@ -262,7 +262,7 @@ mod tests {
             todo!()
         }
     }
-    impl<F: FieldExt> BitstringInstructions<F> for TranscriptChip {
+    impl<F: PrimeField> BitstringInstructions<F> for TranscriptChip {
         fn constrain(
             &self,
             layouter: impl Layouter<F>,
@@ -284,7 +284,7 @@ mod tests {
         }
     }
     impl<C: CurveAffine> TranscriptInstructions<C> for TranscriptChip where C::Base: PrimeFieldBits {}
-    impl<F: FieldExt> UtilitiesInstructions<F> for TranscriptChip {
+    impl<F: PrimeField> UtilitiesInstructions<F> for TranscriptChip {
         type Var = AssignedCell<F, F>;
     }
 

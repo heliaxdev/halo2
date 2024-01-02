@@ -1,4 +1,4 @@
-use ff::{PrimeFieldBits, Field, WithSmallOrderMulGroup};
+use ff::{PrimeFieldBits, Field, WithSmallOrderMulGroup, FromUniformBytes};
 use halo2_proofs::{
     arithmetic::CurveAffine,
     circuit::{AssignedCell, Layouter, Value},
@@ -116,7 +116,7 @@ where
 impl<C: CurveAffine, const K: usize, const MAX_BITSTRING_LENGTH: usize>
     Alg2Config<C, K, MAX_BITSTRING_LENGTH>
 where
-    C::Base: PrimeFieldBits,
+    C::Base: PrimeFieldBits + FromUniformBytes<64>,
 {
     pub(super) fn configure(
         meta: &mut ConstraintSystem<C::Base>,

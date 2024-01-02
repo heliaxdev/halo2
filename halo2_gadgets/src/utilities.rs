@@ -1,6 +1,6 @@
 //! Utility gadgets.
 
-use ff::{Field, PrimeField, PrimeFieldBits};
+use ff::{Field, PrimeField, PrimeFieldBits, FromUniformBytes};
 use halo2_proofs::{
     circuit::{AssignedCell, Cell, Layouter, Value},
     plonk::{Advice, Column, Error, Expression},
@@ -244,7 +244,7 @@ pub fn i2lebsp<const NUM_BITS: usize>(int: u64) -> [bool; NUM_BITS] {
 /// # Panics
 ///
 /// Panics if the bitstring is longer than `F::NUM_BITS`.
-pub fn le_bits_to_field_elem<F: PrimeField>(bits: &[bool]) -> F {
+pub fn le_bits_to_field_elem<F: FromUniformBytes<64>>(bits: &[bool]) -> F {
     assert!(bits.len() as u32 <= F::NUM_BITS);
     let bits: Vec<_> = bits
         .iter()
@@ -263,7 +263,7 @@ pub fn le_bits_to_field_elem<F: PrimeField>(bits: &[bool]) -> F {
         .try_into()
         .unwrap();
 
-    F::from_bytes_wide(&bytes)
+    F::from_uniform_bytes(&bytes)
 }
 
 #[cfg(test)]

@@ -83,6 +83,7 @@ pub(crate) fn endoscale_point_pair<C: CurveAffine>(bits: [bool; 2], base: C) -> 
 /// Panics if there is an odd number of bits.
 #[cfg(test)]
 pub(crate) fn endoscale_point<C: CurveAffine>(bits: &[bool], base: C) -> C {
+    use group::Curve;
     assert_eq!(bits.len() % 2, 0);
     assert!(!bool::from(base.to_curve().is_identity()));
 
@@ -102,7 +103,7 @@ pub(crate) fn endoscale_point<C: CurveAffine>(bits: &[bool], base: C) -> C {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use group::prime::PrimeCurveAffine;
+    use group::{prime::PrimeCurveAffine, Curve, Group};
     use pasta_curves::pallas;
     use rand::{random, rngs::OsRng};
 

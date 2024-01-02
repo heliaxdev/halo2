@@ -1,4 +1,4 @@
-use ff::{Field, PrimeFieldBits, WithSmallOrderMulGroup};
+use ff::{Field, PrimeFieldBits, WithSmallOrderMulGroup, FromUniformBytes};
 use halo2_proofs::{
     arithmetic::CurveAffine,
     circuit::{Layouter, Region, Value},
@@ -23,7 +23,7 @@ pub(super) type Bitstring<F> = RunningSum<F, 2>;
 #[derive(Clone, Debug)]
 pub(super) struct Alg1Config<C: CurveAffine>
 where
-    C::Base: PrimeFieldBits,
+    C::Base: PrimeFieldBits + FromUniformBytes<64>,
 {
     // Selector for endoscaling checks.
     q_endoscale_base: Selector,
@@ -49,7 +49,7 @@ where
 
 impl<C: CurveAffine> Alg1Config<C>
 where
-    C::Base: PrimeFieldBits,
+    C::Base: PrimeFieldBits + FromUniformBytes<64>,
 {
     pub(super) fn configure(
         meta: &mut ConstraintSystem<C::Base>,
@@ -336,7 +336,7 @@ where
 
 impl<C: CurveAffine> Alg1Config<C>
 where
-    C::Base: PrimeFieldBits,
+    C::Base: PrimeFieldBits + FromUniformBytes<64>,
 {
     #[allow(clippy::type_complexity)]
     fn endoscale_base_init(
