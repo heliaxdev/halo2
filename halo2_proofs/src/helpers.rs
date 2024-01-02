@@ -1,5 +1,5 @@
-use crate::poly::Polynomial;
 use crate::arithmetic::CurveAffine;
+use crate::poly::Polynomial;
 use ff::PrimeField;
 use std::io;
 

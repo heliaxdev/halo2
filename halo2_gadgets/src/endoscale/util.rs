@@ -1,8 +1,8 @@
 //! Primitives used in endoscaling.
 
+use ff::WithSmallOrderMulGroup;
 use group::Group;
 use pasta_curves::arithmetic::CurveAffine;
-use ff::WithSmallOrderMulGroup;
 use subtle::CtOption;
 
 /// Maps a pair of bits to a multiple of a scalar using endoscaling.
@@ -37,7 +37,10 @@ pub(crate) fn compute_endoscalar<F: WithSmallOrderMulGroup<3>>(bits: &[bool]) ->
 ///
 /// # Panics
 /// Panics if there is an odd number of bits.
-pub(crate) fn compute_endoscalar_with_acc<F: WithSmallOrderMulGroup<3>>(acc: Option<F>, bits: &[bool]) -> F {
+pub(crate) fn compute_endoscalar_with_acc<F: WithSmallOrderMulGroup<3>>(
+    acc: Option<F>,
+    bits: &[bool],
+) -> F {
     assert_eq!(bits.len() % 2, 0);
 
     let mut acc = acc.unwrap_or_else(|| (F::ZETA + F::ONE).double());
@@ -119,7 +122,10 @@ mod tests {
         assert_eq!(base * endoscalar, endoscaled_base.to_curve());
     }
 
-    fn shift_padded_endo<F: WithSmallOrderMulGroup<3>, const K: usize>(padded_endo: F, k_prime: usize) -> F {
+    fn shift_padded_endo<F: WithSmallOrderMulGroup<3>, const K: usize>(
+        padded_endo: F,
+        k_prime: usize,
+    ) -> F {
         //   (1 - 2^{(K - K')/2}) * 2^{K'/2}
         // = 2^{K'/2} - 2^{K/2}
         let shift = F::from(1 << (k_prime / 2)) - F::from(1 << (K / 2));

@@ -88,7 +88,9 @@ mod tests {
         }
     }
 
-    impl<F: FromUniformBytes<64> + Ord, const SECURE_MDS: usize> Spec<F, 5, 4> for P128Pow5T5Gen<F, SECURE_MDS> {
+    impl<F: FromUniformBytes<64> + Ord, const SECURE_MDS: usize> Spec<F, 5, 4>
+        for P128Pow5T5Gen<F, SECURE_MDS>
+    {
         fn full_rounds() -> usize {
             8
         }
@@ -105,7 +107,7 @@ mod tests {
             SECURE_MDS
         }
 
-        fn constants() -> (Vec<[F; 5]>, Mds <F, 5>, Mds<F, 5>) {
+        fn constants() -> (Vec<[F; 5]>, Mds<F, 5>, Mds<F, 5>) {
             generate_constants::<_, Self, 5, 4>()
         }
     }
@@ -217,7 +219,11 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fp, P128Pow5T5Gen<Fp, 0>, 5, 4>(&mut input, &fp::MDS_T_5, &fp::ROUND_CONSTANTS_T_5);
+            permute::<Fp, P128Pow5T5Gen<Fp, 0>, 5, 4>(
+                &mut input,
+                &fp::MDS_T_5,
+                &fp::ROUND_CONSTANTS_T_5,
+            );
             assert_eq!(input, expected_output);
         }
 
@@ -292,7 +298,11 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fq, P128Pow5T5Gen<Fq, 0>, 5, 4>(&mut input, &fq::MDS_T_5, &fq::ROUND_CONSTANTS_T_5);
+            permute::<Fq, P128Pow5T5Gen<Fq, 0>, 5, 4>(
+                &mut input,
+                &fq::MDS_T_5,
+                &fq::ROUND_CONSTANTS_T_5,
+            );
             assert_eq!(input, expected_output);
         }
     }

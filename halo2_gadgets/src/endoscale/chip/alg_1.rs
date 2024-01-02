@@ -1,4 +1,4 @@
-use ff::{Field, PrimeFieldBits, WithSmallOrderMulGroup, FromUniformBytes};
+use ff::{Field, FromUniformBytes, PrimeFieldBits, WithSmallOrderMulGroup};
 use halo2_proofs::{
     arithmetic::CurveAffine,
     circuit::{Layouter, Region, Value},

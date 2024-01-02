@@ -10,15 +10,11 @@ use halo2_proofs::{
         create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Circuit, Column,
         ConstraintSystem, Error, Fixed, Instance, ProvingKey, SingleVerifier,
     },
-    poly::{
-        Rotation, commitment::Params,
-    },
-    transcript::{
-        Blake2bRead, Blake2bWrite, Challenge255,
-    },
+    poly::{commitment::Params, Rotation},
+    transcript::{Blake2bRead, Blake2bWrite, Challenge255},
 };
+use pasta_curves::{pallas, EqAffine, Fp};
 use rand_core::OsRng;
-use pasta_curves::{pallas, Fp, EqAffine};
 
 #[derive(Clone, Copy)]
 struct StandardPlonkConfig {
@@ -46,8 +42,8 @@ impl StandardPlonkConfig {
             "q_a·a + q_b·b + q_c·c + q_ab·a·b + constant + instance = 0",
             |meta| {
                 let [a, b, c] = [a, b, c].map(|column| meta.query_advice(column, Rotation::cur()));
-                let [q_a, q_b, q_c, q_ab, constant] = [q_a, q_b, q_c, q_ab, constant]
-                    .map(|column| meta.query_fixed(column));
+                let [q_a, q_b, q_c, q_ab, constant] =
+                    [q_a, q_b, q_c, q_ab, constant].map(|column| meta.query_fixed(column));
                 let instance = meta.query_instance(instance, Rotation::cur());
                 Some(
                     q_a * a.clone()

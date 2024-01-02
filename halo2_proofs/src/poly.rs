@@ -3,14 +3,14 @@
 //! the committed polynomials at arbitrary points.
 
 use crate::arithmetic::parallelize;
-use crate::plonk::Assigned;
 use crate::helpers::SerdePrimeField;
+use crate::plonk::Assigned;
 
 use group::ff::{BatchInvert, Field, PrimeField};
 use std::fmt::Debug;
+use std::io;
 use std::marker::PhantomData;
 use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, RangeFrom, RangeFull};
-use std::io;
 
 pub mod commitment;
 mod domain;
@@ -322,7 +322,6 @@ impl Rotation {
         Rotation(1)
     }
 }
-
 
 impl<F: PrimeField, B> Polynomial<F, B> {
     /// Reads polynomial from buffer using `SerdePrimeField::read`.  

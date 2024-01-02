@@ -1,11 +1,11 @@
 //! Bitstring gadget
 
-use std::ops::Range;
 use ff::Field;
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter},
     plonk::Error,
 };
+use std::ops::Range;
 
 use super::RangeConstrained;
 

@@ -1,6 +1,6 @@
 //! Utility gadgets.
 
-use ff::{Field, PrimeField, PrimeFieldBits, FromUniformBytes};
+use ff::{Field, FromUniformBytes, PrimeField, PrimeFieldBits};
 use halo2_proofs::{
     circuit::{AssignedCell, Cell, Layouter, Value},
     plonk::{Advice, Column, Error, Expression},

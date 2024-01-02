@@ -1,7 +1,7 @@
 use crate::{ecc::chip::NonIdentityEccPoint, utilities::decompose_running_sum::RunningSumConfig};
 
 use super::EndoscaleInstructions;
-use ff::{PrimeFieldBits, FromUniformBytes};
+use ff::{FromUniformBytes, PrimeFieldBits};
 use halo2_proofs::{
     arithmetic::CurveAffine,
     circuit::{AssignedCell, Layouter, Value},
@@ -185,7 +185,7 @@ mod tests {
     use super::{EndoscaleConfig, EndoscaleInstructions};
     use crate::ecc::chip::NonIdentityEccPoint;
 
-    use ff::{PrimeFieldBits, FromUniformBytes};
+    use ff::{FromUniformBytes, PrimeFieldBits};
     use halo2_proofs::{
         arithmetic::CurveAffine,
         circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -383,7 +383,7 @@ mod tests {
     >()
     where
         BaseCurve::Base: PrimeFieldBits + FromUniformBytes<64>,
-        ScalarCurve::Base: PrimeFieldBits+ FromUniformBytes<64>,
+        ScalarCurve::Base: PrimeFieldBits + FromUniformBytes<64>,
     {
         use ff::Field;
         use halo2_proofs::dev::MockProver;

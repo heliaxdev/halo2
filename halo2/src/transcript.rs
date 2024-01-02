@@ -7,8 +7,8 @@ use halo2_gadgets::{
 use halo2_proofs::{
     arithmetic::CurveAffine,
     circuit::{AssignedCell, Layouter, Value},
-    plonk::Error,
     pasta::group::ff::PrimeField,
+    plonk::Error,
 };
 
 pub trait DuplexInstructions<F: PrimeField> {

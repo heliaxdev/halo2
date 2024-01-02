@@ -123,7 +123,10 @@ mod tests {
         arithmetic::{CurveAffine, Field},
         circuit::{AssignedCell, Chip, Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
-        pasta::{group::ff::{PrimeFieldBits, PrimeField}, EpAffine, EqAffine},
+        pasta::{
+            group::ff::{PrimeField, PrimeFieldBits},
+            EpAffine, EqAffine,
+        },
         plonk::{
             create_proof, keygen_pk, keygen_vk, Circuit, ConstraintSystem, Error, VerifyingKey,
         },

@@ -196,7 +196,11 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fp, P128Pow5T3Gen<Fp, 0>, 3, 2>(&mut input, &fp::MDS_T_3, &fp::ROUND_CONSTANTS_T_3);
+            permute::<Fp, P128Pow5T3Gen<Fp, 0>, 3, 2>(
+                &mut input,
+                &fp::MDS_T_3,
+                &fp::ROUND_CONSTANTS_T_3,
+            );
             assert_eq!(input, expected_output);
         }
 
@@ -247,7 +251,11 @@ mod tests {
                 ]),
             ];
 
-            permute::<Fq, P128Pow5T3Gen<Fq, 0>, 3, 2>(&mut input, &fq::MDS_T_3, &fq::ROUND_CONSTANTS_T_3);
+            permute::<Fq, P128Pow5T3Gen<Fq, 0>, 3, 2>(
+                &mut input,
+                &fq::MDS_T_3,
+                &fq::ROUND_CONSTANTS_T_3,
+            );
             assert_eq!(input, expected_output);
         }
     }
