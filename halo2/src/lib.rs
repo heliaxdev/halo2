@@ -7,5 +7,6 @@
 #![deny(unsafe_code)]
 
 mod accumulator;
+mod poseidontranscript;
 mod prover;
 mod transcript;
