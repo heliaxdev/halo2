@@ -319,7 +319,7 @@ impl<
 
 #[cfg(test)]
 mod tests {
-    use group::ff::{Field};
+    use group::ff::Field;
     use halo2_proofs::{
         circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
@@ -328,12 +328,12 @@ mod tests {
         poly::commitment::Params,
         transcript::{Blake2bRead, Blake2bWrite, Challenge255},
     };
-    use pasta_curves::{EqAffine};
+    use pasta_curves::EqAffine;
     use rand::rngs::OsRng;
 
     use super::{primitives::Absorbing, Pow5Chip, Pow5Config};
-    use crate::poseidon::{
-        primitives::{self as poseidon, ConstantLength, P128Pow5T3 as OrchardNullifier, Spec},
+    use crate::poseidon::primitives::{
+        self as poseidon, ConstantLength, P128Pow5T3 as OrchardNullifier, Spec,
     };
     use std::convert::TryInto;
     use std::marker::PhantomData;

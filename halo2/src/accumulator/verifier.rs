@@ -84,17 +84,17 @@ where
         }
 
         // Hash verification key into transcript
-        self.transcript.common_scalar(
-            layouter.namespace(|| "vk"),
-            Value::known(self.vk.transcript_repr()),
-        )?;
+        // self.transcript.common_scalar(
+        //     layouter.namespace(|| "vk"),
+        //     Value::known(self.vk.transcript_repr()),
+        // )?;
 
-        let cs = self.vk.cs();
-        for _ in 0..cs.num_advice_columns() {
-            let advice = proof.clone().map(|mut p| p.read_point().unwrap());
-            self.transcript
-                .common_point(layouter.namespace(|| ""), advice)?;
-        }
+        // let cs = self.vk.cs();
+        // for _ in 0..cs.num_advice_columns() {
+        //     let advice = proof.clone().map(|mut p| p.read_point().unwrap());
+        //     self.transcript
+        //         .common_point(layouter.namespace(|| ""), advice)?;
+        // }
 
         // Old accumulator
         let acc = A::read_instance(instances);
@@ -117,6 +117,10 @@ mod tests {
     use halo2_gadgets::{
         ecc::EccInstructions,
         endoscale::EndoscaleInstructions,
+        poseidon::{
+            primitives::{Absorbing, Domain, Spec},
+            PaddedWord, PoseidonSpongeInstructions, Sponge,
+        },
         utilities::{bitstring::BitstringInstructions, UtilitiesInstructions},
     };
     use halo2_proofs::{
@@ -238,7 +242,16 @@ mod tests {
     }
 
     #[derive(PartialEq, Eq, Debug, Clone)]
-    struct TranscriptChip;
+    struct TranscriptChip<
+        F: Field,
+        PoseidonChip: PoseidonSpongeInstructions<F, S, D, T, RATE>,
+        S: Spec<F, T, RATE>,
+        D: Domain<F, RATE>,
+        const T: usize,
+        const RATE: usize,
+    > {
+        poseidon_sponge: Sponge<F, PoseidonChip, S, Absorbing<PaddedWord<F>, RATE>, D, T, RATE>,
+    }
     impl<F: PrimeField> Chip<F> for TranscriptChip {
         type Config = ();
 
@@ -255,14 +268,23 @@ mod tests {
     impl<F: PrimeField> DuplexInstructions<F> for TranscriptChip {
         fn absorb(
             &mut self,
-            layouter: impl Layouter<F>,
+            mut layouter: impl Layouter<F>,
             value: AssignedCell<F, F>,
         ) -> Result<(), Error> {
-            todo!()
+            self.poseidon_sponge
+                .absorb(layouter.namespace(|| format!("sponge absorb")), value)?;
+
+            Ok(())
         }
 
-        fn squeeze(&mut self, layouter: impl Layouter<F>) -> Result<AssignedCell<F, F>, Error> {
-            todo!()
+        fn squeeze(&mut self, mut layouter: impl Layouter<F>) -> Result<AssignedCell<F, F>, Error> {
+            let mut poseidon_sponge = self
+                .poseidon_sponge
+                .finish_absorbing(layouter.namespace(|| "sponge finish absorb"))?;
+            let output = poseidon_sponge.squeeze(layouter.namespace(|| "sponge squeeze"))?;
+            self.poseidon_sponge =
+                poseidon_sponge.finish_squeezing(layouter.namespace(|| "sponge finish squeeze"))?;
+            Ok(output)
         }
     }
     impl<F: PrimeField> BitstringInstructions<F> for TranscriptChip {
