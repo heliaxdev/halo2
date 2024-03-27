@@ -203,6 +203,11 @@ impl<C: CurveAffine> Params<C> {
             u,
         })
     }
+
+    /// Return size of the circuit
+    pub fn n(&self) -> u64 {
+        self.n
+    }
 }
 
 /// Wrapper type around a blinding factor.

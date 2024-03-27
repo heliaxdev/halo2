@@ -1,46 +1,47 @@
-use std::marker::PhantomData;
-
-use crate::transcript::{Transcript, TranscriptInstructions};
+use crate::{
+    poseidontranscript::{
+        POSEIDON_PREFIX_CHALLENGE, POSEIDON_PREFIX_POINT, POSEIDON_PREFIX_SCALAR,
+    },
+    transcript::{Transcript, TranscriptInstructions},
+};
+use group::{
+    ff::{Field, PrimeField},
+    Curve,
+};
 use halo2_gadgets::endoscale::EndoscaleInstructions;
 use halo2_proofs::{
-    arithmetic::CurveAffine,
     circuit::{Layouter, Value},
-    pasta::group::ff::PrimeFieldBits,
-    plonk::{Error, VerifyingKey},
+    plonk::{Advice, Column, Error, VerifyingKey},
+    poly::commitment::{Blind, Params},
     transcript::{EncodedChallenge, TranscriptRead},
 };
-
-use super::{Accumulator, Instance};
+use pasta_curves::vesta;
+use std::marker::PhantomData;
 
 /// Accumulator verifier
-pub struct Verifier<C, E, EndoscaleChip, TranscriptChip, TR>
+pub struct Verifier<E, EndoscaleChip, TranscriptChip, TR>
 where
-    C: CurveAffine,
-    C::Base: PrimeFieldBits,
-    E: EncodedChallenge<C>,
-    EndoscaleChip: EndoscaleInstructions<C>,
-    TranscriptChip: TranscriptInstructions<C>,
-    TR: TranscriptRead<C, E> + Clone,
+    E: EncodedChallenge<vesta::Affine>,
+    EndoscaleChip: EndoscaleInstructions<vesta::Affine>,
+    TranscriptChip: TranscriptInstructions<vesta::Affine>,
+    TR: TranscriptRead<vesta::Affine, E> + Clone,
 {
-    vk: VerifyingKey<C>,
-    transcript: Transcript<C, TranscriptChip>,
+    vk: VerifyingKey<vesta::Affine>,
+    transcript: Transcript<vesta::Affine, TranscriptChip>,
     endoscale_chip: EndoscaleChip,
     fixed_bases: Vec<EndoscaleChip::FixedBases>,
     _marker: PhantomData<(E, TR)>,
 }
 
 impl<
-        C: CurveAffine,
-        E: EncodedChallenge<C>,
-        EndoscaleChip: EndoscaleInstructions<C>,
-        TranscriptChip: TranscriptInstructions<C>,
-        TR: TranscriptRead<C, E> + Clone,
-    > Verifier<C, E, EndoscaleChip, TranscriptChip, TR>
-where
-    C::Base: PrimeFieldBits,
+        E: EncodedChallenge<vesta::Affine>,
+        EndoscaleChip: EndoscaleInstructions<vesta::Affine>,
+        TranscriptChip: TranscriptInstructions<vesta::Affine>,
+        TR: TranscriptRead<vesta::Affine, E> + Clone,
+    > Verifier<E, EndoscaleChip, TranscriptChip, TR>
 {
     pub fn new(
-        vk: VerifyingKey<C>,
+        vk: VerifyingKey<vesta::Affine>,
         transcript_chip: TranscriptChip,
         endoscale_chip: EndoscaleChip,
         fixed_bases: Vec<EndoscaleChip::FixedBases>,
@@ -54,60 +55,370 @@ where
         }
     }
 
-    pub fn verify_proof<A: Accumulator<C>>(
+    pub fn verify_proof(
         &mut self,
-        mut layouter: impl Layouter<C::Base>,
-        proof: Value<TR>,
-        instances: &[Instance],
-        is_base_case: Value<bool>,
-    ) -> Result<(Value<bool>, A::Output), Error> {
+        params: &Params<vesta::Affine>,
+        mut layouter: impl Layouter<vesta::Base>,
+        mut proof: Value<TR>,
+        pre_instances: &[&[vesta::Scalar]],
+        column: Column<Advice>,
+    ) -> Result<(), Error> {
         // Check that instances matches the expected number of instance columns
-        if instances.len() != self.vk.cs().num_instance_columns() {
+        if pre_instances.len() != self.vk.cs().num_instance_columns() {
             return Err(Error::InvalidInstances);
         }
 
-        let mut instance_commitments = vec![];
-        for column in instances.iter() {
-            let mut column_vec = vec![];
-            for instance in column.iter() {
-                let instance =
-                    self.endoscale_chip
-                        .witness_bitstring(&mut layouter, instance, false)?;
-                let commitment = self.endoscale_chip.endoscale_fixed_base(
-                    &mut layouter,
-                    instance,
-                    self.fixed_bases.clone(),
-                )?;
-                column_vec.push(commitment);
-            }
-            instance_commitments.push(column_vec);
-        }
+        // Check instance_commitments construction out of circuit
+        // In Taiga, the instances of resource logic are open to public in practice.
+        let instance_commitments: Vec<vesta::Affine> = pre_instances
+            .iter()
+            .map(|instance| {
+                let mut poly = instance.to_vec();
+                poly.resize(params.n() as usize, vesta::Scalar::ZERO);
+                let poly = self.vk.get_domain().lagrange_from_vec(poly);
+
+                params.commit_lagrange(&poly, Blind::default()).to_affine()
+            })
+            .collect();
+
+        // TODO: move the constants to transcript
+        let prefix_challenge = layouter.assign_region(
+            || "load prefix_challenge",
+            |mut region| {
+                region.assign_advice_from_constant(
+                    || "load constant",
+                    column,
+                    0,
+                    POSEIDON_PREFIX_CHALLENGE.clone(),
+                )
+            },
+        )?;
+        let prefix_point = layouter.assign_region(
+            || "load prefix_point",
+            |mut region| {
+                region.assign_advice_from_constant(
+                    || "load constant",
+                    column,
+                    0,
+                    POSEIDON_PREFIX_POINT.clone(),
+                )
+            },
+        )?;
+        let prefix_scalar = layouter.assign_region(
+            || "load prefix_scalar",
+            |mut region| {
+                region.assign_advice_from_constant(
+                    || "load constant",
+                    column,
+                    0,
+                    POSEIDON_PREFIX_SCALAR.clone(),
+                )
+            },
+        )?;
+
+        // TODO: Compress verifying key
 
         // Hash verification key into transcript
-        // self.transcript.common_scalar(
-        //     layouter.namespace(|| "vk"),
-        //     Value::known(self.vk.transcript_repr()),
-        // )?;
+        self.transcript.common_scalar(
+            layouter.namespace(|| "vk"),
+            prefix_challenge.clone(),
+            Value::known(self.vk.transcript_repr()),
+        )?;
 
-        // let cs = self.vk.cs();
-        // for _ in 0..cs.num_advice_columns() {
-        //     let advice = proof.clone().map(|mut p| p.read_point().unwrap());
-        //     self.transcript
-        //         .common_point(layouter.namespace(|| ""), advice)?;
-        // }
+        // Hash the instance commitments into the transcript
+        for commitment in instance_commitments {
+            self.transcript.common_point(
+                layouter.namespace(|| "instance commitments"),
+                prefix_point.clone(),
+                Value::known(commitment),
+            )?;
+        }
+
+        // Hash the prover's advice commitments into the transcript
+        let cs = self.vk.cs();
+        for _ in 0..cs.num_advice_columns() {
+            let advice = proof.map(|p| p.read_point().unwrap());
+            self.transcript.common_point(
+                layouter.namespace(|| "advice commitments"),
+                prefix_point.clone(),
+                advice,
+            )?;
+        }
+
+        // Sample theta challenge for keeping lookup columns linearly independent
+        let theta = self
+            .transcript
+            .squeeze_challenge(layouter.namespace(|| "theta challenge"), prefix_challenge);
+
+        // Hash each lookup permuted commitment
+        let lookups_permuted = (0..self.vk.cs().get_lookups_num())
+            .map(|_| {
+                let advice = proof.map(|p| p.read_point().unwrap());
+                let permuted_input_commitment = self.transcript.common_point(
+                    layouter.namespace(|| "advice permuted_input_commitment"),
+                    prefix_point.clone(),
+                    advice,
+                )?;
+                let advice = proof.map(|p| p.read_point().unwrap());
+                let permuted_table_commitment = self.transcript.common_point(
+                    layouter.namespace(|| "advice permuted_table_commitment"),
+                    prefix_point.clone(),
+                    advice,
+                )?;
+                Ok((permuted_input_commitment, permuted_table_commitment))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Sample beta challenge
+        let beta = self
+            .transcript
+            .squeeze_challenge(layouter.namespace(|| "beta challenge"), prefix_challenge);
+
+        // Sample gamma challenge
+        let gamma = self
+            .transcript
+            .squeeze_challenge(layouter.namespace(|| "gamma challenge"), prefix_challenge);
+
+        // Hash each permutation product commitment
+        let chunk_len = self.vk.get_cs_degree() - 2;
+        let permutations_committed = self
+            .vk
+            .cs()
+            .permutation()
+            .get_columns()
+            .chunks(chunk_len)
+            .map(|_| {
+                let advice = proof.map(|p| p.read_point().unwrap());
+                self.transcript.common_point(
+                    layouter.namespace(|| "advice permutation_product_commitments"),
+                    prefix_point.clone(),
+                    advice,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Hash each lookup product commitment
+        let lookups_committed = lookups_permuted
+            .into_iter()
+            .map(|lookups| {
+                let advice = proof.map(|p| p.read_point().unwrap());
+                let product_commitment = self.transcript.common_point(
+                    layouter.namespace(|| "advice permutation_product_commitments"),
+                    prefix_point.clone(),
+                    advice,
+                )?;
+                Ok((lookups.0, lookups.1, product_commitment))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Hash vanishing commitments
+        let advice = proof.map(|p| p.read_point().unwrap());
+        let vanishing = self.transcript.common_point(
+            layouter.namespace(|| "advice vanishing"),
+            prefix_point.clone(),
+            advice,
+        )?;
+
+        // Sample y challenge, which keeps the gates linearly independent.
+        let y = self
+            .transcript
+            .squeeze_challenge(layouter.namespace(|| "y challenge"), prefix_challenge);
+
+        let vanishing = {
+            let h_commitments = (0..self.vk.get_domain().get_quotient_poly_degree())
+                .map(|_| {
+                    let advice = proof.map(|p| p.read_point().unwrap());
+                    self.transcript.common_point(
+                        layouter.namespace(|| "advice permuted_input_commitment"),
+                        prefix_point.clone(),
+                        advice,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            (h_commitments, vanishing)
+        };
+
+        // Sample x challenge, which is used to ensure the circuit is satisfied with high probability.
+        let x = self
+            .transcript
+            .squeeze_challenge(layouter.namespace(|| "x challenge"), prefix_challenge)?;
+
+        // Read instance_queries
+        let instance_evals = (0..self.vk.cs().get_instance_queries_num())
+            .map(|_| {
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                self.transcript.common_scalar(
+                    layouter.namespace(|| "advice instance_evals"),
+                    prefix_scalar.clone(),
+                    advice,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Read advice_queries
+        let advice_evals = (0..self.vk.cs().get_advice_queries_num())
+            .map(|_| {
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                self.transcript.common_scalar(
+                    layouter.namespace(|| "advice advice_evals"),
+                    prefix_scalar.clone(),
+                    advice,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Read fixed_queries
+        let fixed_evals = (0..self.vk.cs().get_fixed_queries_num())
+            .map(|_| {
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                self.transcript.common_scalar(
+                    layouter.namespace(|| "advice fixed_evals"),
+                    prefix_scalar.clone(),
+                    advice,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Read vanishing random_eval
+        let advice = proof.map(|p| p.read_scalar().unwrap());
+        let vanishing_random_eval = self.transcript.common_scalar(
+            layouter.namespace(|| "advice vanishing_random_eval"),
+            prefix_scalar.clone(),
+            advice,
+        )?;
+
+        // Read permutations_common
+        let permutations_common = self
+            .vk
+            .permutation()
+            .commitments()
+            .iter()
+            .map(|_| {
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                self.transcript.common_scalar(
+                    layouter.namespace(|| "advice permutations_common"),
+                    prefix_scalar.clone(),
+                    advice,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Read permutations_evaluated
+        let permutations_evaluated = {
+            let mut sets = vec![];
+
+            let mut iter = permutations_committed.into_iter();
+
+            while let Some(permutation_product_commitment) = iter.next() {
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                let permutation_product_eval = self.transcript.common_scalar(
+                    layouter.namespace(|| "advice permutation_product_eval"),
+                    prefix_scalar.clone(),
+                    advice,
+                )?;
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                let permutation_product_next_eval = self.transcript.common_scalar(
+                    layouter.namespace(|| "advice permutation_product_next_eval"),
+                    prefix_scalar.clone(),
+                    advice,
+                )?;
+                let permutation_product_last_eval = if iter.len() > 0 {
+                    let advice = proof.map(|p| p.read_scalar().unwrap());
+                    let permutation_product_next_eval = self.transcript.common_scalar(
+                        layouter.namespace(|| "advice permutation_product_next_eval"),
+                        prefix_scalar.clone(),
+                        advice,
+                    )?;
+                    Some(permutation_product_next_eval)
+                } else {
+                    None
+                };
+
+                sets.push((
+                    permutation_product_commitment,
+                    permutation_product_eval,
+                    permutation_product_next_eval,
+                    permutation_product_last_eval,
+                ));
+            }
+            sets
+        };
+
+        // Read lookups_evaluated
+        let lookups_evaluated = lookups_committed
+            .into_iter()
+            .map(|lookup| {
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                let product_eval = self.transcript.common_scalar(
+                    layouter.namespace(|| "advice product_eval"),
+                    prefix_scalar.clone(),
+                    advice,
+                )?;
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                let product_next_eval = self.transcript.common_scalar(
+                    layouter.namespace(|| "advice product_next_eval"),
+                    prefix_scalar.clone(),
+                    advice,
+                )?;
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                let permuted_input_eval = self.transcript.common_scalar(
+                    layouter.namespace(|| "advice permuted_input_eval"),
+                    prefix_scalar.clone(),
+                    advice,
+                )?;
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                let permuted_input_inv_eval = self.transcript.common_scalar(
+                    layouter.namespace(|| "advice permuted_input_inv_eval"),
+                    prefix_scalar.clone(),
+                    advice,
+                )?;
+                let advice = proof.map(|p| p.read_scalar().unwrap());
+                let permuted_table_eval = self.transcript.common_scalar(
+                    layouter.namespace(|| "advice permuted_table_eval"),
+                    prefix_scalar.clone(),
+                    advice,
+                )?;
+                Ok((
+                    lookup,
+                    product_eval,
+                    product_next_eval,
+                    permuted_input_eval,
+                    permuted_input_inv_eval,
+                    permuted_table_eval,
+                ))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // TODO: vanishing check, Compute the expected value of h(x)
+        // Defer the non-native arithmetic to the next layer.
+
+        // TODO: init queries
+        // let queries = {};
+
+        // TODO: check polynomial commitments open(multi-open) to the correct values
 
         // Old accumulator
-        let acc = A::read_instance(instances);
-        // Proof of previous recursive circuit
-        let new_instance = A::read_instance(instances);
-        // FIXME: We can calculate this ourselves
-        let new_acc = A::read_new_acc(instances);
+        // let acc = A::read_instance(instances);
+        // // Proof of previous recursive circuit
+        // let new_instance = A::read_instance(instances);
+        // // FIXME: We can calculate this ourselves
+        // let new_acc = A::read_new_acc(instances);
 
-        Ok((
-            A::check_new_acc(&[acc, new_instance], new_acc, is_base_case),
-            new_acc,
-        ))
+        // Ok((
+        //     A::check_new_acc(&[acc, new_instance], new_acc, is_base_case),
+        //     new_acc,
+        // ))
+
+        Ok(())
     }
+}
+
+/// Converts from vesta::Scalar to vesta::Base (aka $x \pmod{r_\mathbb{P}}$).
+///
+/// This requires no modular reduction because vesta' Scalar field is smaller than its
+/// Base field.
+fn mod_r_p(x: vesta::Scalar) -> vesta::Base {
+    vesta::Base::from_repr(x.to_repr()).unwrap()
 }
 
 #[cfg(test)]

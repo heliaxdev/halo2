@@ -895,8 +895,9 @@ impl<F: Field, C: Into<Constraint<F>>, Iter: IntoIterator<Item = C>> IntoIterato
     }
 }
 
+/// gate
 #[derive(Clone, Debug)]
-pub(crate) struct Gate<F: Field> {
+pub struct Gate<F: Field> {
     name: &'static str,
     constraint_names: Vec<&'static str>,
     polys: Vec<Expression<F>>,
@@ -1489,6 +1490,36 @@ impl<F: Field> ConstraintSystem<F> {
     /// Returns num_selectors
     pub fn num_selectors(&self) -> usize {
         self.num_selectors
+    }
+
+    /// Returns permutation
+    pub fn permutation(&self) -> &permutation::Argument {
+        &self.permutation
+    }
+
+    /// Returns lookups num
+    pub fn get_lookups_num(&self) -> usize {
+        self.lookups.len()
+    }
+
+    /// Returns instance_queries num
+    pub fn get_instance_queries_num(&self) -> usize {
+        self.instance_queries.len()
+    }
+
+    /// Returns instance_queries num
+    pub fn get_advice_queries_num(&self) -> usize {
+        self.advice_queries.len()
+    }
+
+    /// Returns fixed_queries num
+    pub fn get_fixed_queries_num(&self) -> usize {
+        self.fixed_queries.len()
+    }
+
+    /// Returns gates
+    pub fn get_gates(&self) -> &Vec<Gate<F>> {
+        &self.gates
     }
 }
 

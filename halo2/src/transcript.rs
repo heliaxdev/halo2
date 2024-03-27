@@ -6,9 +6,9 @@ use halo2_gadgets::{
 };
 use halo2_proofs::{
     arithmetic::CurveAffine,
-    circuit::{AssignedCell, Layouter, Value},
+    circuit::{AssignedCell, Layouter, Value, Chip},
     pasta::group::ff::PrimeField,
-    plonk::Error,
+    plonk::{Column, Error, Advice},
 };
 
 pub trait DuplexInstructions<F: PrimeField> {
@@ -25,14 +25,35 @@ pub trait TranscriptInstructions<C: CurveAffine>:
 {
 }
 
+#[derive(Clone, Debug)]
+pub struct TranscriptChip<F: PrimeField> {
+    config: TranscriptConfig<F>,
+}
+
+impl<F: PrimeField> Chip<F> for TranscriptChip<F> {
+    type Config = ();
+
+    type Loaded = ();
+
+    fn config(&self) -> &Self::Config {
+        todo!()
+    }
+
+    fn loaded(&self) -> &Self::Loaded {
+        todo!()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TranscriptConfig<F: PrimeField> {
+    advices: [Column<Advice>; 10],
+    _marker: PhantomData<F>,
+}
+
 /// A Transcript gadget
-pub struct Transcript<C, TranscriptChip>
-where
-    C: CurveAffine,
-    TranscriptChip: TranscriptInstructions<C>,
+pub struct Transcript<F: PrimeField>
 {
-    transcript_chip: TranscriptChip,
-    _marker: PhantomData<C>,
+    transcript_chip: TranscriptChip<F>,
 }
 
 impl<C, TranscriptChip> Transcript<C, TranscriptChip>
@@ -85,10 +106,12 @@ where
         &mut self,
         mut layouter: impl Layouter<C::Base>,
         prefix_scalar: AssignedCell<C::Base, C::Base>,
-        scalar: AssignedCell<C::Base, C::Base>,
+        scalar: Value<C::Scalar>,
     ) -> Result<(), Error> {
         // absorb POSEIDON_PREFIX_SCALAR
         self.transcript_chip.absorb(&mut layouter, prefix_scalar)?;
+        // TODO: convert and assign scalar
+
         // absorb scalar
         self.transcript_chip.absorb(&mut layouter, scalar)?;
 
@@ -96,6 +119,7 @@ where
     }
 
     /// Squeezes a `LENGTH`-bit challenge from the transcript.
+    /// We need a 160-bit challenge in practice
     pub fn squeeze_challenge<const LENGTH: usize>(
         &mut self,
         mut layouter: impl Layouter<C::Base>,

@@ -211,6 +211,16 @@ impl<C: CurveAffine> VerifyingKey<C> {
     pub fn transcript_repr(&self) -> C::Scalar {
         self.transcript_repr
     }
+
+    /// Returns the permutation
+    pub fn permutation(&self) -> &permutation::VerifyingKey<C> {
+        &self.permutation
+    }
+
+    /// Returns the gates.
+    pub fn gates(&self) -> &Vec<Gate<C::Scalar>> {
+        &self.cs.gates
+    }
 }
 
 /// Minimal representation of a verification key that can be used to identify
@@ -320,6 +330,11 @@ impl<C: CurveAffine> VerifyingKey<C> {
     /// Get the underlying [`EvaluationDomain`].
     pub fn get_domain(&self) -> &EvaluationDomain<C::Scalar> {
         &self.domain
+    }
+
+    /// Get the cs_degree
+    pub fn get_cs_degree(&self) -> usize {
+        self.cs_degree
     }
 }
 
